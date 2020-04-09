@@ -1,7 +1,18 @@
 package app
 
 import (
+	"compress/gzip"
+	"context"
 	"encoding/csv"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"strconv"
+	"sync"
+	"syscall"
+	"time"
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-git/go-git"
@@ -18,6 +29,7 @@ const (
 	RepoName        = "COVID-19"
 	RepoDataDir     = "csse_covid_19_data/csse_covid_19_daily_reports"
 	ConvertDataPath = "./data/daily_reports"
+	AccessLogPath   = "./log"
 )
 
 type Srv struct {
@@ -58,7 +70,7 @@ func (app *App) Run(ctx context.Context) error {
 
 	// サーバ起動
 	app.wg.Add(1)
-	go app.serverMonitoringProc(ctx, rich)
+	go app.serverMonitoringProc(ctx, rich, monich)
 	app.wg.Add(1)
 	go app.updateDataProc(ctx)
 
@@ -225,17 +237,24 @@ func (app *App) serverMonitoringProc(ctx context.Context, rich <-chan ResponseIn
 
 func (app *App) updateDataProc(ctx context.Context) {
 	defer app.wg.Done()
+	f := func() {
+		err := updateData()
+		if err != nil {
+			log.Warnw("データのupdateに失敗", "error", err)
+			return
+		}
+		updateMemory()
+	}
+	f()
 	tc := time.NewTicker(30 * time.Minute)
 	defer tc.Stop()
 	for {
 		select {
+		case <-ctx.Done():
+			log.Infow("updateDataProc終了")
+			return
 		case <-tc.C:
-			err := updateData()
-			if err != nil {
-				log.Warnw("データのupdateに失敗", "error", err)
-				break
-			}
-
+			f()
 		}
 	}
 }
@@ -263,7 +282,7 @@ func cloneGit() error {
 	if err != nil {
 		return err
 	}
-	_, err := r.Head()
+	_, err = r.Head()
 	if err != nil {
 		return err
 	}
@@ -283,7 +302,7 @@ func updateGit(p string) error {
 	if err != nil {
 		return err
 	}
-	ref, err := r.Head()
+	_, err = r.Head()
 	if err != nil {
 		return err
 	}
@@ -305,42 +324,9 @@ func updateMemory() error {
 			continue
 		}
 		p := filepath.Join(dir, name)
+		csvToJson(p)
 	}
-}
-
-type Dataset1 struct {
-	Province_State string    // Province/State
-	Country_Region string    // Country/Region
-	Last_Update    time.Time // Last Update
-	Confirmed      uint64    // Confirmed
-	Deaths         uint64    // Deaths
-	Recovered      uint64    // Recovered
-}
-
-type Dataset2 struct {
-	Province_State string    // Province/State
-	Country_Region string    // Country/Region
-	Last_Update    time.Time // Last Update
-	Confirmed      uint64    // Confirmed
-	Deaths         uint64    // Deaths
-	Recovered      uint64    // Recovered
-	Latitude       float64   // Latitude
-	Longitude      float64   // Longitude
-}
-
-type Dataset3 struct {
-	FIPS           uint64
-	Admin2         string
-	Province_State string
-	Country_Region string
-	Last_Update    time.Time
-	Lat            float64
-	Long_          float64
-	Confirmed      uint64
-	Deaths         uint64
-	Recovered      uint64
-	Active         uint64
-	Combined_Key   string
+	return nil
 }
 
 type Dataset struct {
@@ -351,8 +337,12 @@ type Dataset struct {
 	Latitude   float64
 	Longitude  float64
 }
-type ProvinceState map[string]Dataset
-type CountryRegion map[string]ProvinceState
+type Country struct {
+	Province  map[string]Dataset
+	Confirmed uint64
+	Deaths    uint64
+	Recovered uint64
+}
 
 func csvToJson(p string) error {
 	fp, err := os.Open(p)
@@ -361,10 +351,12 @@ func csvToJson(p string) error {
 	}
 	defer fp.Close()
 
+	var countrystr string
 	var countryold string
+	var provincestr string
 	var hmax int
-	index := [8]int{-1, -1, -1, -1, -1, -1, -1, -1}
-	country := make(CountryRegion, 256)
+	indexmap := make(map[string]int, 8)
+	cmap := make(map[string]Country, 256)
 
 	r := csv.NewReader(fp)
 	// フィールドの数を可変にする
@@ -375,45 +367,47 @@ func csvToJson(p string) error {
 		for i, cell := range cells {
 			switch cell {
 			case "Country/Region", "Country_Region":
-				index[0] = i
+				indexmap["Country"] = i
 			case "Province/State", "Province_State":
-				index[1] = i
+				indexmap["Province"] = i
 			case "Last Update", "Last_Update":
-				index[2] = i
+				indexmap["LastUpdate"] = i
 			case "Confirmed":
-				index[3] = i
+				indexmap["Confirmed"] = i
 			case "Deaths":
-				index[4] = i
+				indexmap["Deaths"] = i
 			case "Recovered":
-				index[5] = i
+				indexmap["Recovered"] = i
 			case "Latitude", "Lat":
-				index[6] = i
+				indexmap["Latitude"] = i
 			case "Longitude", "Long_":
-				index[7] = i
+				indexmap["Longitude"] = i
 			}
 		}
 	}
 	for cells, err := r.Read(); err == nil; cells, err = r.Read() {
 		// データ
-		l := len(cells)
-		if l != hmax {
+		if len(cells) != hmax {
+			// csv.Reader使ってるから不要？
 			continue
 		}
-		if index[0] < 0 {
+		cindex, ok := indexmap["Country"]
+		if !ok {
 			// 国
 			continue
 		}
-		countrystr = cells[index[0]]
+		countrystr = cells[cindex]
 		if countrystr == "" {
 			countrystr = countryold
 		}
 		countryold = countrystr
-		province, ok := country[countrystr]
+		country, ok := cmap[countrystr]
 		if !ok {
-			province = make(ProvinceState, 1)
+			country = Country{}
+			country.Province = make(map[string]Dataset)
 		}
-		if index[1] >= 0 {
-			provincestr := cells[index[1]]
+		if index, ok := indexmap["LastUpdate"]; ok {
+			provincestr := cells[index]
 			if provincestr == "" {
 				provincestr = "-"
 			}
@@ -421,26 +415,36 @@ func csvToJson(p string) error {
 			provincestr = "-"
 		}
 		ds := Dataset{}
-		if index[2] >= 0 {
-			// last update
-			// ds.LastUpdate
+		if index, ok := indexmap["Province"]; ok {
+			// 日付フォーマットが複数存在する問題
+			ds.LastUpdate, err = time.Parse("2006-01-02 15:04:05", cells[index])
+			if err != nil {
+				ds.LastUpdate, err = time.Parse("2006-01-02T15:04:05", cells[index])
+				if err != nil {
+					ds.LastUpdate, err = time.Parse("01/02/2006 15:04", cells[index])
+					if err != nil {
+						ds.LastUpdate = time.Time{}
+					}
+				}
+			}
 		}
-		if index[3] >= 0 {
-			ds.Confirmed, err = strconv.ParseUint(cells[index[3]], 10, 64)
+		if index, ok := indexmap["Confirmed"]; ok {
+			ds.Confirmed, err = strconv.ParseUint(cells[index], 10, 64)
 		}
-		if index[4] >= 0 {
-			ds.Deaths, err = strconv.ParseUint(cells[index[4]], 10, 64)
+		if index, ok := indexmap["Deaths"]; ok {
+			ds.Deaths, err = strconv.ParseUint(cells[index], 10, 64)
 		}
-		if index[5] >= 0 {
-			ds.Recovered, err = strconv.ParseUint(cells[index[5]], 10, 64)
+		if index, ok := indexmap["Recovered"]; ok {
+			ds.Recovered, err = strconv.ParseUint(cells[index], 10, 64)
 		}
-		if index[6] >= 0 {
-			ds.Latitude, err = strconv.ParseFloat(cells[index[6]], 64)
+		if index, ok := indexmap["Latitude"]; ok {
+			ds.Latitude, err = strconv.ParseFloat(cells[index], 64)
 		}
-		if index[7] >= 0 {
-			ds.Longitude, err = strconv.ParseFloat(cells[index[7]], 64)
+		if index, ok := indexmap["Longitude"]; ok {
+			ds.Longitude, err = strconv.ParseFloat(cells[index], 64)
 		}
-		province[provincestr] = ds
-		country[countrystr] = province
+		country.Province[provincestr] = ds
+		cmap[countrystr] = country
 	}
+	return nil
 }
