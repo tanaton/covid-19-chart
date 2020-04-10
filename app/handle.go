@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -36,4 +37,30 @@ func (h *GetMonitoringHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	} else {
 		http.Error(w, "データ取得に失敗しました。", http.StatusInternalServerError)
 	}
+}
+
+type Alias interface {
+	GetPath() string
+	SetPath(p string)
+}
+
+type AliasHandler struct {
+	sync.RWMutex
+	path string
+}
+
+func (h *AliasHandler) GetPath() string {
+	h.RLock()
+	defer h.RUnlock()
+	return h.path
+}
+
+func (h *AliasHandler) SetPath(p string) {
+	h.Lock()
+	defer h.Unlock()
+	h.path = p
+}
+
+func (h *AliasHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, h.GetPath())
 }

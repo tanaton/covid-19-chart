@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,12 +28,19 @@ import (
 )
 
 const (
-	RootDomain      = "covid-19.unko.in"
-	DataRepoURL     = "https://github.com/CSSEGISandData/COVID-19"
-	GitPath         = "./data/git/COVID-19"
-	RepoDataDir     = "csse_covid_19_data/csse_covid_19_daily_reports"
-	ConvertDataPath = "./www/data/covid_19_daily_reports_json"
-	AccessLogPath   = "./log"
+	RootDomain = "covid-19.unko.in"
+
+	DataRepoURL = "https://github.com/CSSEGISandData/COVID-19"
+
+	GitPath            = "./data/git/COVID-19"
+	RepoDataPath       = "./data/git/COVID-19/csse_covid_19_data/csse_covid_19_daily_reports"
+	PublicPath         = "./www"
+	ConvertDataPath    = "./www/data/daily_reports/json"
+	AccessLogPath      = "./log"
+	NowJSONDefaultName = "2020-01-22.json"
+
+	GitTimeoutDuration  = 1 * time.Minute
+	UpdateCycleDuration = 1 * time.Hour
 )
 
 type Srv struct {
@@ -52,6 +60,7 @@ var gzipContentTypeList = []string{
 	"application/json",
 }
 var log *zap.SugaredLogger
+var NoErrUpdate = fmt.Errorf("データ未更新")
 
 func init() {
 	//logger, err := zap.NewDevelopment()
@@ -69,17 +78,26 @@ func New() *App {
 func (app *App) Run(ctx context.Context) error {
 	monich := make(chan ResultMonitor)
 	rich := make(chan ResponseInfo, 32)
+	nowjsondata := &AliasHandler{}
+	nowjsondata.SetPath(filepath.Join(ConvertDataPath, NowJSONDefaultName))
+
+	// 終了管理機能の起動
 	ctx, exitch := app.startExitManageProc(ctx)
+
+	// データ更新
+	updateData(ctx)
+	setNowJSONDataPath(nowjsondata)
 
 	// サーバ起動
 	app.wg.Add(1)
-	go app.serverMonitoringProc(ctx, rich, monich)
+	go app.webServerMonitoringProc(ctx, rich, monich)
 	app.wg.Add(1)
-	go app.updateDataProc(ctx)
+	go app.updateDataProc(ctx, nowjsondata)
 
 	// URL設定
 	http.Handle("/api/unko.in/1/monitor", &GetMonitoringHandler{ch: monich})
-	http.Handle("/", http.FileServer(http.Dir("./public_html")))
+	http.Handle("/data/daily_reports/json/now", nowjsondata)
+	http.Handle("/", http.FileServer(http.Dir(PublicPath)))
 
 	ghfunc, err := gziphandler.GzipHandlerWithOpts(gziphandler.CompressionLevel(gzip.BestSpeed), gziphandler.ContentTypes(gzipContentTypeList))
 	if err != nil {
@@ -184,7 +202,7 @@ func (app *App) startExitManageProc(ctx context.Context) (context.Context, chan<
 }
 
 // サーバお手軽監視用
-func (app *App) serverMonitoringProc(ctx context.Context, rich <-chan ResponseInfo, monich chan<- ResultMonitor) {
+func (app *App) webServerMonitoringProc(ctx context.Context, rich <-chan ResponseInfo, monich chan<- ResultMonitor) {
 	defer app.wg.Done()
 	// logrotateの設定がめんどくせーのでアプリでやる
 	// https://github.com/uber-go/zap/blob/master/FAQ.md
@@ -207,7 +225,7 @@ func (app *App) serverMonitoringProc(ctx context.Context, rich <-chan ResponseIn
 	for {
 		select {
 		case <-ctx.Done():
-			log.Infow("serverMonitoringProc終了")
+			log.Infow("webServerMonitoringProc終了")
 			return
 		case monich <- resmin:
 		case ri := <-rich:
@@ -238,20 +256,9 @@ func (app *App) serverMonitoringProc(ctx context.Context, rich <-chan ResponseIn
 	}
 }
 
-func (app *App) updateDataProc(ctx context.Context) {
+func (app *App) updateDataProc(ctx context.Context, nowjsondata Alias) {
 	defer app.wg.Done()
-	f := func(ctx context.Context) {
-		tctx, cancel := context.WithTimeout(ctx, time.Minute)
-		defer cancel()
-		err := updateGitData(tctx)
-		if err != nil {
-			log.Warnw("データのupdateに失敗", "error", err)
-			return
-		}
-		updateDataFile()
-	}
-	f(ctx)
-	tc := time.NewTicker(1 * time.Hour)
+	tc := time.NewTicker(UpdateCycleDuration)
 	defer tc.Stop()
 	for {
 		select {
@@ -259,8 +266,37 @@ func (app *App) updateDataProc(ctx context.Context) {
 			log.Infow("updateDataProc終了")
 			return
 		case <-tc.C:
-			f(ctx)
+			updateData(ctx)
+			setNowJSONDataPath(nowjsondata)
 		}
+	}
+}
+
+func setNowJSONDataPath(nowjsondata Alias) {
+	list, err := filepath.Glob(filepath.Join(ConvertDataPath, "*.json"))
+	if err != nil {
+		return
+	}
+	l := len(list)
+	if l <= 0 {
+		return
+	}
+	sort.Strings(list)
+	nowjsondata.SetPath(list[l-1])
+}
+
+func updateData(ctx context.Context) {
+	tctx, cancel := context.WithTimeout(ctx, GitTimeoutDuration)
+	defer cancel()
+	err := updateGitData(tctx)
+	if err == NoErrUpdate {
+		log.Infow("データ更新無し")
+	} else if err != nil {
+		log.Warnw("データのupdateに失敗", "error", err)
+	} else {
+		// データファイル更新
+		updateDataFile()
+		log.Infow("updateDataFile完了")
 	}
 }
 
@@ -270,7 +306,9 @@ func updateGitData(ctx context.Context) error {
 		return err
 	}
 	err = updateGit(ctx, GitPath)
-	if err != nil && err != git.NoErrAlreadyUpToDate {
+	if err == git.NoErrAlreadyUpToDate {
+		return NoErrUpdate
+	} else if err != nil {
 		return err
 	}
 	return nil
@@ -330,44 +368,61 @@ func updateDataFile() error {
 	if err := checkAndCreateDir(ConvertDataPath); err != nil {
 		return err
 	}
-	dir := filepath.Join(GitPath, RepoDataDir)
-	dl, err := ioutil.ReadDir(dir)
+	dl, err := ioutil.ReadDir(RepoDataPath)
 	if err != nil {
 		return err
 	}
+	para := 4
+	c := make(chan struct{}, para)
 	for _, it := range dl {
 		if it.IsDir() {
 			continue
 		}
-		name := it.Name()
-		if filepath.Ext(name) != ".csv" {
-			continue
-		}
-		p := filepath.Join(dir, name)
-		cmap, err := csvToCountryMap(p)
-		if err != nil {
-			continue
-		}
-		func() {
-			p := filepath.Join(ConvertDataPath, name+".json")
-			fp, err := os.Create(p)
-			if err != nil {
-				log.Infow("ファイル生成に失敗", "path", p, "error", err)
-				return
-			}
-			defer fp.Close()
-			w := bufio.NewWriter(fp)
-			enc := json.NewEncoder(w)
-			enc.SetIndent("", "\t")
-			err = enc.Encode(cmap)
-			if err != nil {
-				log.Infow("JSON変換に失敗", "error", err)
-				return
-			}
-			w.Flush()
-		}()
+		c <- struct{}{}
+		go func(name string) {
+			defer func() {
+				<-c
+			}()
+			convertJSON(name)
+		}(it.Name())
+	}
+	for para > 0 {
+		c <- struct{}{}
+		para--
 	}
 	return nil
+}
+
+func convertJSON(name string) {
+	ext := filepath.Ext(name)
+	if ext != ".csv" {
+		return
+	}
+	cmap, err := csvToCountryMap(filepath.Join(RepoDataPath, name))
+	if err != nil {
+		return
+	}
+	t, err := time.Parse("01-02-2006", strings.TrimRight(name, ext))
+	if err != nil {
+		log.Warnw("ファイル名が想定と違う", "name", name, "error", err)
+		return
+	}
+	p := filepath.Join(ConvertDataPath, t.Format("2006-01-02")+".json")
+	fp, err := os.Create(p)
+	if err != nil {
+		log.Warnw("ファイル生成に失敗", "path", p, "error", err)
+		return
+	}
+	defer fp.Close()
+	w := bufio.NewWriterSize(fp, 128*1024)
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "\t")
+	err = enc.Encode(cmap)
+	if err != nil {
+		log.Warnw("JSON変換に失敗", "error", err)
+		return
+	}
+	w.Flush()
 }
 
 type Dataset struct {
@@ -408,27 +463,13 @@ func csvToCountryMap(p string) (map[string]Country, error) {
 		// ヘッダー
 		hmax = len(cells)
 		for i, cell := range cells {
-			switch cell {
-			case "Country/Region", "Country_Region":
-				indexmap["Country"] = i
-			case "Province/State", "Province_State":
-				indexmap["Province"] = i
-			case "Admin2":
-				indexmap["Admin2"] = i
-			case "Last Update", "Last_Update":
-				indexmap["LastUpdate"] = i
-			case "Confirmed":
-				indexmap["Confirmed"] = i
-			case "Deaths":
-				indexmap["Deaths"] = i
-			case "Recovered":
-				indexmap["Recovered"] = i
-			case "Latitude", "Lat":
-				indexmap["Latitude"] = i
-			case "Longitude", "Long_":
-				indexmap["Longitude"] = i
-			}
+			indexmap[headerToSubject(cell)] = i
 		}
+	}
+	_, ok := indexmap["Country"]
+	if !ok {
+		// 国が無い
+		return nil, fmt.Errorf("国情報が無いよ")
 	}
 	for cells, err := r.Read(); err == nil; cells, err = r.Read() {
 		// データ
@@ -436,12 +477,7 @@ func csvToCountryMap(p string) (map[string]Country, error) {
 			// csv.Reader使ってるから不要？
 			continue
 		}
-		cindex, ok := indexmap["Country"]
-		if !ok {
-			// 国
-			continue
-		}
-		countrystr = cells[cindex]
+		countrystr = cells[indexmap["Country"]]
 		if countrystr == "" {
 			countrystr = countryold
 		}
@@ -467,15 +503,16 @@ func csvToCountryMap(p string) (map[string]Country, error) {
 		ds := Dataset{}
 		if index, ok := indexmap["LastUpdate"]; ok {
 			// 日付フォーマットが複数存在する問題
-			if strings.Contains(cells[index], "/") {
-				ds.LastUpdate, err = time.Parse("1/2/2006 15:04", cells[index])
+			lu := cells[index]
+			if strings.Contains(lu, "/") {
+				ds.LastUpdate, err = time.Parse("1/2/2006 15:04", lu)
 				if err != nil {
-					ds.LastUpdate, _ = time.Parse("1/2/06 15:04", cells[index])
+					ds.LastUpdate, _ = time.Parse("1/2/06 15:04", lu)
 				}
-			} else if strings.Contains(cells[index], "T") {
-				ds.LastUpdate, _ = time.Parse("2006-01-02T15:04:05", cells[index])
+			} else if strings.Contains(lu, "T") {
+				ds.LastUpdate, _ = time.Parse("2006-01-02T15:04:05", lu)
 			} else {
-				ds.LastUpdate, _ = time.Parse("2006-01-02 15:04:05", cells[index])
+				ds.LastUpdate, _ = time.Parse("2006-01-02 15:04:05", lu)
 			}
 		}
 		if index, ok := indexmap["Confirmed"]; ok {
@@ -500,6 +537,31 @@ func csvToCountryMap(p string) (map[string]Country, error) {
 		cmap[countrystr] = country
 	}
 	return cmap, nil
+}
+
+func headerToSubject(cell string) string {
+	var str string
+	switch cell {
+	case "Country/Region", "Country_Region":
+		str = "Country"
+	case "Province/State", "Province_State":
+		str = "Province"
+	case "Admin2":
+		str = "Admin2"
+	case "Last Update", "Last_Update":
+		str = "LastUpdate"
+	case "Confirmed":
+		str = "Confirmed"
+	case "Deaths":
+		str = "Deaths"
+	case "Recovered":
+		str = "Recovered"
+	case "Latitude", "Lat":
+		str = "Latitude"
+	case "Longitude", "Long_":
+		str = "Longitude"
+	}
+	return str
 }
 
 func checkAndCreateDir(p string) error {
