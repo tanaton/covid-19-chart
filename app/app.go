@@ -37,12 +37,53 @@ const (
 	RepoDataPath       = "./data/git/COVID-19/csse_covid_19_data/csse_covid_19_daily_reports"
 	PublicPath         = "./www"
 	ConvertDataPath    = "./www/data/daily_reports/json"
+	SummaryDataPath    = "./www/data/daily_reports/summary.json"
 	AccessLogPath      = "./log"
 	NowJSONDefaultName = "2020-01-22.json"
 
 	GitTimeoutDuration  = 1 * time.Minute
 	UpdateCycleDuration = 1 * time.Hour
 )
+
+type Unixtime time.Time
+
+func (ts *Unixtime) UnmarshalJSON(data []byte) error {
+	i, err := strconv.ParseInt(string(data), 10, 64)
+	t := time.Unix(i, 0)
+	*ts = Unixtime(t)
+	return err
+}
+func (ts Unixtime) MarshalJSON() ([]byte, error) {
+	return strconv.AppendInt([]byte(nil), time.Time(ts).Unix(), 10), nil
+}
+func (ts *Unixtime) UnmarshalBinary(data []byte) error {
+	t := time.Time(*ts)
+	err := t.UnmarshalBinary(data)
+	*ts = Unixtime(t)
+	return err
+}
+func (ts Unixtime) MarshalBinary() ([]byte, error) {
+	return time.Time(ts).MarshalBinary()
+}
+
+type Dataset struct {
+	LastUpdate Unixtime `json:"last_update"`
+	Confirmed  uint64   `json:"confirmed"`
+	Deaths     uint64   `json:"deaths"`
+	Recovered  uint64   `json:"recovered"`
+	Latitude   float64  `json:"latitude"`
+	Longitude  float64  `json:"longitude"`
+}
+type Country struct {
+	Province  map[string]Dataset `json:"province"`
+	Confirmed uint64             `json:"confirmed"`
+	Deaths    uint64             `json:"deaths"`
+	Recovered uint64             `json:"recovered"`
+}
+type DatasetSimple struct {
+	Date Unixtime  `json:"date"`
+	CDR  [3]uint64 `json:"cdr"`
+}
 
 type Srv struct {
 	s *http.Server
@@ -78,27 +119,32 @@ func New() *App {
 }
 
 func (app *App) Run(ctx context.Context) error {
+	if err := checkAndCreateDir(PublicPath); err != nil {
+		return err
+	}
 	monich := make(chan ResultMonitor)
 	rich := make(chan ResponseInfo, 32)
-	nowjsondata := &AliasHandler{}
-	nowjsondata.SetPath(filepath.Join(ConvertDataPath, NowJSONDefaultName))
+	jsondata := [2]*AliasHandler{&AliasHandler{}, &AliasHandler{}}
+	jsondata[0].SetPath(filepath.Join(ConvertDataPath, NowJSONDefaultName))
+	jsondata[1].SetPath(filepath.Join(ConvertDataPath, NowJSONDefaultName))
 
 	// 終了管理機能の起動
 	ctx, exitch := app.startExitManageProc(ctx)
 
 	// データ更新
-	updateData(ctx)
-	setNowJSONDataPath(nowjsondata)
+	updateData(ctx, true)
+	setJSONDataPath([]Alias{jsondata[0], jsondata[1]})
 
 	// サーバ起動
 	app.wg.Add(1)
 	go app.webServerMonitoringProc(ctx, rich, monich)
 	app.wg.Add(1)
-	go app.updateDataProc(ctx, nowjsondata)
+	go app.updateDataProc(ctx, []Alias{jsondata[0], jsondata[1]})
 
 	// URL設定
 	http.Handle("/api/unko.in/1/monitor", &GetMonitoringHandler{ch: monich})
-	http.Handle("/data/daily_reports/now.json", nowjsondata)
+	http.Handle("/data/daily_reports/now.json", jsondata[0])
+	http.Handle("/data/daily_reports/yesterday.json", jsondata[1])
 	http.Handle("/", http.FileServer(http.Dir(PublicPath)))
 
 	ghfunc, err := gziphandler.GzipHandlerWithOpts(gziphandler.CompressionLevel(gzip.BestSpeed), gziphandler.ContentTypes(gzipContentTypeList))
@@ -258,7 +304,7 @@ func (app *App) webServerMonitoringProc(ctx context.Context, rich <-chan Respons
 	}
 }
 
-func (app *App) updateDataProc(ctx context.Context, nowjsondata Alias) {
+func (app *App) updateDataProc(ctx context.Context, jsondata []Alias) {
 	defer app.wg.Done()
 	tc := time.NewTicker(UpdateCycleDuration)
 	defer tc.Stop()
@@ -268,44 +314,52 @@ func (app *App) updateDataProc(ctx context.Context, nowjsondata Alias) {
 			log.Infow("updateDataProc終了")
 			return
 		case <-tc.C:
-			updateData(ctx)
-			setNowJSONDataPath(nowjsondata)
+			updateData(ctx, false)
+			setJSONDataPath(jsondata)
 		}
 	}
 }
 
-func setNowJSONDataPath(nowjsondata Alias) {
+func setJSONDataPath(jsondata []Alias) {
 	list, err := filepath.Glob(filepath.Join(ConvertDataPath, "*.json"))
 	if err != nil {
 		return
 	}
 	l := len(list)
-	if l <= 0 {
-		return
-	}
 	sort.Strings(list)
-	nowjsondata.SetPath(list[l-1])
+	for i := range jsondata {
+		if l <= i {
+			return
+		}
+		jsondata[i].SetPath(list[l-(i+1)])
+	}
 }
 
-func updateData(ctx context.Context) {
+func updateData(ctx context.Context, update bool) {
 	tctx, cancel := context.WithTimeout(ctx, GitTimeoutDuration)
 	defer cancel()
 	err := updateGitData(tctx)
-	if err == NoErrUpdate {
-		log.Infow("データ更新無し")
-	} else if err != nil {
-		log.Warnw("データのupdateに失敗", "error", err)
-	} else {
-		// データファイル更新
-		updateDataFile()
-		log.Infow("updateDataFile完了")
+	if !update {
+		if err == NoErrUpdate {
+			log.Infow("データ更新無し")
+			return
+		}
+		if err != nil {
+			log.Warnw("データのupdateに失敗", "error", err)
+			return
+		}
 	}
+	// データファイル更新
+	updateDataFile()
+	log.Infow("updateDataFile完了")
 }
 
 func updateGitData(ctx context.Context) error {
-	err := checkGit(ctx)
+	clone, err := checkGit(ctx)
 	if err != nil {
 		return err
+	} else if clone {
+		return nil
 	}
 	err = updateGit(ctx, GitPath)
 	if err == git.NoErrAlreadyUpToDate {
@@ -316,7 +370,7 @@ func updateGitData(ctx context.Context) error {
 	return nil
 }
 
-func checkGit(ctx context.Context) error {
+func checkGit(ctx context.Context) (bool, error) {
 	_, err := os.Stat(GitPath)
 	if err != nil {
 		err = cloneGit(ctx, GitPath, DataRepoURL)
@@ -324,9 +378,10 @@ func checkGit(ctx context.Context) error {
 			log.Warnw("gitリポジトリのcloneに失敗", "error", err)
 		} else {
 			log.Infow("gitリポジトリをcloneしました", "path", DataRepoURL)
+			return true, nil
 		}
 	}
-	return err
+	return false, err
 }
 
 func cloneGit(ctx context.Context, p, url string) error {
@@ -374,80 +429,83 @@ func updateDataFile() error {
 	if err != nil {
 		return err
 	}
-	para := 4
-	c := make(chan struct{}, para)
+	countrySummary := make(map[string][]DatasetSimple)
 	for _, it := range dl {
 		if it.IsDir() {
 			continue
 		}
-		c <- struct{}{}
-		go func(name string) {
-			defer func() {
-				<-c
-			}()
-			convertJSON(name)
-		}(it.Name())
+		name := it.Name()
+		ext := filepath.Ext(name)
+		if ext != ".csv" {
+			continue
+		}
+		t, err := time.Parse("01-02-2006", strings.TrimRight(name, ext))
+		if err != nil {
+			continue
+		}
+		cmap, err := convertJSON(t, name)
+		if err != nil {
+			continue
+		}
+		// ファイル名の並び的には2021年になるとぶっ壊れるけどそのころにはコロナも落ち着いている事を期待
+		countrySummary = appendSummary(countrySummary, cmap, t)
 	}
-	for para > 0 {
-		c <- struct{}{}
-		para--
-	}
-	return nil
+	return storeSummary(countrySummary)
 }
 
-func convertJSON(name string) {
-	ext := filepath.Ext(name)
-	if ext != ".csv" {
-		return
-	}
+func convertJSON(t time.Time, name string) (map[string]Country, error) {
 	cmap, err := csvToCountryMap(filepath.Join(RepoDataPath, name))
 	if err != nil {
-		return
-	}
-	t, err := time.Parse("01-02-2006", strings.TrimRight(name, ext))
-	if err != nil {
-		log.Warnw("ファイル名が想定と違う", "name", name, "error", err)
-		return
+		return nil, err
 	}
 	p := filepath.Join(ConvertDataPath, t.Format("2006-01-02")+".json")
 	fp, err := os.Create(p)
 	if err != nil {
 		log.Warnw("ファイル生成に失敗", "path", p, "error", err)
-		return
+		return nil, err
 	}
 	defer fp.Close()
 	w := bufio.NewWriterSize(fp, 128*1024)
 	enc := json.NewEncoder(w)
-	enc.SetIndent("", "\t")
+	//enc.SetIndent("", "\t")
 	err = enc.Encode(cmap)
 	if err != nil {
 		log.Warnw("JSON変換に失敗", "error", err)
-		return
+		return nil, err
 	}
 	w.Flush()
+	return cmap, nil
 }
 
-type Dataset struct {
-	LastUpdate time.Time `json:"last_update"`
-	Confirmed  uint64    `json:"confirmed"`
-	Deaths     uint64    `json:"deaths"`
-	Recovered  uint64    `json:"recovered"`
-	Latitude   float64   `json:"latitude"`
-	Longitude  float64   `json:"longitude"`
+func appendSummary(csmap map[string][]DatasetSimple, cmap map[string]Country, t time.Time) map[string][]DatasetSimple {
+	for countryname, country := range cmap {
+		cs, ok := csmap[countryname]
+		if !ok {
+			cs = make([]DatasetSimple, 0, 365)
+		}
+		cs = append(cs, DatasetSimple{
+			Date: Unixtime(t),
+			CDR:  [3]uint64{country.Confirmed, country.Deaths, country.Recovered},
+		})
+		csmap[countryname] = cs
+	}
+	return csmap
 }
-type Country struct {
-	Province  map[string]Dataset `json:"province"`
-	Confirmed uint64             `json:"confirmed"`
-	Deaths    uint64             `json:"deaths"`
-	Recovered uint64             `json:"recovered"`
-}
-type DatasetSimple struct {
-	Confirmed uint64 `json:"confirmed"`
-	Deaths    uint64 `json:"deaths"`
-	Recovered uint64 `json:"recovered"`
-}
-type CountrySummary struct {
-	Datasets map[string]DatasetSimple
+
+func storeSummary(csmap map[string][]DatasetSimple) error {
+	fp, err := os.Create(SummaryDataPath)
+	if err != nil {
+		return err
+	}
+	defer fp.Close()
+	w := bufio.NewWriterSize(fp, 128*1024)
+	enc := json.NewEncoder(w)
+	//enc.SetIndent("", "\t")
+	err = enc.Encode(csmap)
+	if err != nil {
+		return err
+	}
+	return w.Flush()
 }
 
 func csvToCountryMap(p string) (map[string]Country, error) {
@@ -487,7 +545,7 @@ func csvToCountryMap(p string) (map[string]Country, error) {
 			// csv.Reader使ってるから不要？
 			continue
 		}
-		countrystr = cells[indexmap["Country"]]
+		countrystr = strings.TrimSpace(cells[indexmap["Country"]])
 		if countrystr == "" {
 			countrystr = countryold
 		}
@@ -498,7 +556,7 @@ func csvToCountryMap(p string) (map[string]Country, error) {
 			country.Province = make(map[string]Dataset)
 		}
 		if index, ok := indexmap["Province"]; ok {
-			provincestr = cells[index]
+			provincestr = strings.TrimSpace(cells[index])
 			if ad, ok := indexmap["Admin2"]; ok {
 				if provincestr != "" && cells[ad] != "" {
 					provincestr = provincestr + "/" + cells[ad]
@@ -513,17 +571,19 @@ func csvToCountryMap(p string) (map[string]Country, error) {
 		ds := Dataset{}
 		if index, ok := indexmap["LastUpdate"]; ok {
 			// 日付フォーマットが複数存在する問題
+			var t time.Time
 			lu := cells[index]
 			if strings.Contains(lu, "/") {
-				ds.LastUpdate, err = time.Parse("1/2/2006 15:04", lu)
+				t, err = time.Parse("1/2/2006 15:04", lu)
 				if err != nil {
-					ds.LastUpdate, _ = time.Parse("1/2/06 15:04", lu)
+					t, _ = time.Parse("1/2/06 15:04", lu)
 				}
 			} else if strings.Contains(lu, "T") {
-				ds.LastUpdate, _ = time.Parse("2006-01-02T15:04:05", lu)
+				t, _ = time.Parse("2006-01-02T15:04:05", lu)
 			} else {
-				ds.LastUpdate, _ = time.Parse("2006-01-02 15:04:05", lu)
+				t, _ = time.Parse("2006-01-02 15:04:05", lu)
 			}
+			ds.LastUpdate = Unixtime(t)
 		}
 		if index, ok := indexmap["Confirmed"]; ok {
 			ds.Confirmed, _ = strconv.ParseUint(cells[index], 10, 64)
