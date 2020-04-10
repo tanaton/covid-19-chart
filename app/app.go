@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"mime"
 	"net/http"
 	"os"
 	"os/signal"
@@ -69,6 +70,7 @@ func init() {
 		panic(err)
 	}
 	log = logger.Sugar()
+	mime.AddExtensionType(".json", "application/json; charset=utf-8")
 }
 
 func New() *App {
@@ -96,7 +98,7 @@ func (app *App) Run(ctx context.Context) error {
 
 	// URL設定
 	http.Handle("/api/unko.in/1/monitor", &GetMonitoringHandler{ch: monich})
-	http.Handle("/data/daily_reports/json/now", nowjsondata)
+	http.Handle("/data/daily_reports/now.json", nowjsondata)
 	http.Handle("/", http.FileServer(http.Dir(PublicPath)))
 
 	ghfunc, err := gziphandler.GzipHandlerWithOpts(gziphandler.CompressionLevel(gzip.BestSpeed), gziphandler.ContentTypes(gzipContentTypeList))
@@ -438,6 +440,14 @@ type Country struct {
 	Confirmed uint64             `json:"confirmed"`
 	Deaths    uint64             `json:"deaths"`
 	Recovered uint64             `json:"recovered"`
+}
+type DatasetSimple struct {
+	Confirmed uint64 `json:"confirmed"`
+	Deaths    uint64 `json:"deaths"`
+	Recovered uint64 `json:"recovered"`
+}
+type CountrySummary struct {
+	Datasets map[string]DatasetSimple
 }
 
 func csvToCountryMap(p string) (map[string]Country, error) {
