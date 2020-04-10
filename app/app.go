@@ -1,15 +1,19 @@
 package app
 
 import (
+	"bufio"
 	"compress/gzip"
 	"context"
 	"encoding/csv"
+	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -25,10 +29,9 @@ import (
 const (
 	RootDomain      = "covid-19.unko.in"
 	DataRepoURL     = "https://github.com/CSSEGISandData/COVID-19"
-	DataPath        = "./data"
-	RepoName        = "COVID-19"
+	GitPath         = "./data/git/COVID-19"
 	RepoDataDir     = "csse_covid_19_data/csse_covid_19_daily_reports"
-	ConvertDataPath = "./data/daily_reports"
+	ConvertDataPath = "./www/data/covid_19_daily_reports_json"
 	AccessLogPath   = "./log"
 )
 
@@ -237,16 +240,18 @@ func (app *App) serverMonitoringProc(ctx context.Context, rich <-chan ResponseIn
 
 func (app *App) updateDataProc(ctx context.Context) {
 	defer app.wg.Done()
-	f := func() {
-		err := updateData()
+	f := func(ctx context.Context) {
+		tctx, cancel := context.WithTimeout(ctx, time.Minute)
+		defer cancel()
+		err := updateGitData(tctx)
 		if err != nil {
 			log.Warnw("データのupdateに失敗", "error", err)
 			return
 		}
-		updateMemory()
+		updateDataFile()
 	}
-	f()
-	tc := time.NewTicker(30 * time.Minute)
+	f(ctx)
+	tc := time.NewTicker(1 * time.Hour)
 	defer tc.Stop()
 	for {
 		select {
@@ -254,30 +259,42 @@ func (app *App) updateDataProc(ctx context.Context) {
 			log.Infow("updateDataProc終了")
 			return
 		case <-tc.C:
-			f()
+			f(ctx)
 		}
 	}
 }
 
-func updateData() error {
-	p := filepath.Join(DataPath, RepoName)
-	_, err := os.Stat(p)
+func updateGitData(ctx context.Context) error {
+	err := checkGit(ctx)
 	if err != nil {
-		err = cloneGit()
+		return err
+	}
+	err = updateGit(ctx, GitPath)
+	if err != nil && err != git.NoErrAlreadyUpToDate {
+		return err
+	}
+	return nil
+}
+
+func checkGit(ctx context.Context) error {
+	_, err := os.Stat(GitPath)
+	if err != nil {
+		err = cloneGit(ctx, GitPath, DataRepoURL)
 		if err != nil {
 			log.Warnw("gitリポジトリのcloneに失敗", "error", err)
 		} else {
 			log.Infow("gitリポジトリをcloneしました", "path", DataRepoURL)
 		}
-	} else {
-		err = updateGit(p)
 	}
 	return err
 }
 
-func cloneGit() error {
-	r, err := git.PlainClone(DataPath, false, &git.CloneOptions{
-		URL: DataRepoURL,
+func cloneGit(ctx context.Context, p, url string) error {
+	if err := checkAndCreateDir(p); err != nil {
+		return err
+	}
+	r, err := git.PlainCloneContext(ctx, p, false, &git.CloneOptions{
+		URL: url,
 	})
 	if err != nil {
 		return err
@@ -289,7 +306,7 @@ func cloneGit() error {
 	return nil
 }
 
-func updateGit(p string) error {
+func updateGit(ctx context.Context, p string) error {
 	r, err := git.PlainOpen(p)
 	if err != nil {
 		return err
@@ -298,7 +315,7 @@ func updateGit(p string) error {
 	if err != nil {
 		return err
 	}
-	err = w.Pull(&git.PullOptions{RemoteName: "origin"})
+	err = w.PullContext(ctx, &git.PullOptions{RemoteName: "origin"})
 	if err != nil {
 		return err
 	}
@@ -309,8 +326,11 @@ func updateGit(p string) error {
 	return nil
 }
 
-func updateMemory() error {
-	dir := filepath.Join(DataPath, RepoName, RepoDataDir)
+func updateDataFile() error {
+	if err := checkAndCreateDir(ConvertDataPath); err != nil {
+		return err
+	}
+	dir := filepath.Join(GitPath, RepoDataDir)
 	dl, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return err
@@ -324,38 +344,61 @@ func updateMemory() error {
 			continue
 		}
 		p := filepath.Join(dir, name)
-		csvToJson(p)
+		cmap, err := csvToCountryMap(p)
+		if err != nil {
+			continue
+		}
+		func() {
+			p := filepath.Join(ConvertDataPath, name+".json")
+			fp, err := os.Create(p)
+			if err != nil {
+				log.Infow("ファイル生成に失敗", "path", p, "error", err)
+				return
+			}
+			defer fp.Close()
+			w := bufio.NewWriter(fp)
+			enc := json.NewEncoder(w)
+			enc.SetIndent("", "\t")
+			err = enc.Encode(cmap)
+			if err != nil {
+				log.Infow("JSON変換に失敗", "error", err)
+				return
+			}
+			w.Flush()
+		}()
 	}
 	return nil
 }
 
 type Dataset struct {
-	LastUpdate time.Time
-	Confirmed  uint64
-	Deaths     uint64
-	Recovered  uint64
-	Latitude   float64
-	Longitude  float64
+	LastUpdate time.Time `json:"last_update"`
+	Confirmed  uint64    `json:"confirmed"`
+	Deaths     uint64    `json:"deaths"`
+	Recovered  uint64    `json:"recovered"`
+	Latitude   float64   `json:"latitude"`
+	Longitude  float64   `json:"longitude"`
 }
 type Country struct {
-	Province  map[string]Dataset
-	Confirmed uint64
-	Deaths    uint64
-	Recovered uint64
+	Province  map[string]Dataset `json:"province"`
+	Confirmed uint64             `json:"confirmed"`
+	Deaths    uint64             `json:"deaths"`
+	Recovered uint64             `json:"recovered"`
 }
 
-func csvToJson(p string) error {
+func csvToCountryMap(p string) (map[string]Country, error) {
 	fp, err := os.Open(p)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer fp.Close()
 
-	var countrystr string
-	var countryold string
-	var provincestr string
-	var hmax int
-	indexmap := make(map[string]int, 8)
+	var (
+		countrystr  string
+		countryold  string
+		provincestr string
+		hmax        int
+	)
+	indexmap := make(map[string]int, 9)
 	cmap := make(map[string]Country, 256)
 
 	r := csv.NewReader(fp)
@@ -370,6 +413,8 @@ func csvToJson(p string) error {
 				indexmap["Country"] = i
 			case "Province/State", "Province_State":
 				indexmap["Province"] = i
+			case "Admin2":
+				indexmap["Admin2"] = i
 			case "Last Update", "Last_Update":
 				indexmap["LastUpdate"] = i
 			case "Confirmed":
@@ -406,8 +451,13 @@ func csvToJson(p string) error {
 			country = Country{}
 			country.Province = make(map[string]Dataset)
 		}
-		if index, ok := indexmap["LastUpdate"]; ok {
-			provincestr := cells[index]
+		if index, ok := indexmap["Province"]; ok {
+			provincestr = cells[index]
+			if ad, ok := indexmap["Admin2"]; ok {
+				if provincestr != "" && cells[ad] != "" {
+					provincestr = provincestr + "/" + cells[ad]
+				}
+			}
 			if provincestr == "" {
 				provincestr = "-"
 			}
@@ -415,36 +465,50 @@ func csvToJson(p string) error {
 			provincestr = "-"
 		}
 		ds := Dataset{}
-		if index, ok := indexmap["Province"]; ok {
+		if index, ok := indexmap["LastUpdate"]; ok {
 			// 日付フォーマットが複数存在する問題
-			ds.LastUpdate, err = time.Parse("2006-01-02 15:04:05", cells[index])
-			if err != nil {
-				ds.LastUpdate, err = time.Parse("2006-01-02T15:04:05", cells[index])
+			if strings.Contains(cells[index], "/") {
+				ds.LastUpdate, err = time.Parse("1/2/2006 15:04", cells[index])
 				if err != nil {
-					ds.LastUpdate, err = time.Parse("01/02/2006 15:04", cells[index])
-					if err != nil {
-						ds.LastUpdate = time.Time{}
-					}
+					ds.LastUpdate, _ = time.Parse("1/2/06 15:04", cells[index])
 				}
+			} else if strings.Contains(cells[index], "T") {
+				ds.LastUpdate, _ = time.Parse("2006-01-02T15:04:05", cells[index])
+			} else {
+				ds.LastUpdate, _ = time.Parse("2006-01-02 15:04:05", cells[index])
 			}
 		}
 		if index, ok := indexmap["Confirmed"]; ok {
-			ds.Confirmed, err = strconv.ParseUint(cells[index], 10, 64)
+			ds.Confirmed, _ = strconv.ParseUint(cells[index], 10, 64)
 		}
 		if index, ok := indexmap["Deaths"]; ok {
-			ds.Deaths, err = strconv.ParseUint(cells[index], 10, 64)
+			ds.Deaths, _ = strconv.ParseUint(cells[index], 10, 64)
 		}
 		if index, ok := indexmap["Recovered"]; ok {
-			ds.Recovered, err = strconv.ParseUint(cells[index], 10, 64)
+			ds.Recovered, _ = strconv.ParseUint(cells[index], 10, 64)
 		}
 		if index, ok := indexmap["Latitude"]; ok {
-			ds.Latitude, err = strconv.ParseFloat(cells[index], 64)
+			ds.Latitude, _ = strconv.ParseFloat(cells[index], 64)
 		}
 		if index, ok := indexmap["Longitude"]; ok {
-			ds.Longitude, err = strconv.ParseFloat(cells[index], 64)
+			ds.Longitude, _ = strconv.ParseFloat(cells[index], 64)
 		}
 		country.Province[provincestr] = ds
+		country.Confirmed += ds.Confirmed
+		country.Deaths += ds.Deaths
+		country.Recovered += ds.Recovered
 		cmap[countrystr] = country
+	}
+	return cmap, nil
+}
+
+func checkAndCreateDir(p string) error {
+	st, err := os.Stat(p)
+	if err != nil {
+		return os.MkdirAll(p, 0666)
+	}
+	if st.IsDir() == false {
+		return fmt.Errorf("フォルダを期待したけどファイルでした。:%s", p)
 	}
 	return nil
 }
