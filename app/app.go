@@ -66,6 +66,12 @@ func (ts Unixtime) MarshalBinary() ([]byte, error) {
 	return time.Time(ts).MarshalBinary()
 }
 
+type TimeDaily time.Time
+
+func (t TimeDaily) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + time.Time(t).Format("2006/01/02") + `"`), nil
+}
+
 type Dataset struct {
 	LastUpdate Unixtime `json:"last_update"`
 	Confirmed  uint64   `json:"confirmed"`
@@ -81,8 +87,16 @@ type Country struct {
 	Recovered uint64             `json:"recovered"`
 }
 type DatasetSimple struct {
-	Date Unixtime  `json:"date"`
+	Date TimeDaily `json:"date"`
 	CDR  [3]uint64 `json:"cdr"`
+}
+type CountrySummary struct {
+	Daily []DatasetSimple `json:"daily"`
+	CDR   [3]uint64       `json:"cdr"`
+}
+type WorldSummary struct {
+	Countrys map[string]CountrySummary `json:"countrys"`
+	CDR      [3]uint64                 `json:"cdr"`
 }
 
 type Srv struct {
@@ -429,7 +443,9 @@ func updateDataFile() error {
 	if err != nil {
 		return err
 	}
-	countrySummary := make(map[string][]DatasetSimple)
+	ws := &WorldSummary{
+		Countrys: make(map[string]CountrySummary),
+	}
 	for _, it := range dl {
 		if it.IsDir() {
 			continue
@@ -448,9 +464,14 @@ func updateDataFile() error {
 			continue
 		}
 		// ファイル名の並び的には2021年になるとぶっ壊れるけどそのころにはコロナも落ち着いている事を期待
-		countrySummary = appendSummary(countrySummary, cmap, t)
+		appendSummary(ws, cmap, t)
 	}
-	return storeSummary(countrySummary)
+	for _, it := range ws.Countrys {
+		ws.CDR[0] += it.CDR[0]
+		ws.CDR[1] += it.CDR[1]
+		ws.CDR[2] += it.CDR[2]
+	}
+	return storeSummary(ws)
 }
 
 func convertJSON(t time.Time, name string) (map[string]Country, error) {
@@ -477,22 +498,25 @@ func convertJSON(t time.Time, name string) (map[string]Country, error) {
 	return cmap, nil
 }
 
-func appendSummary(csmap map[string][]DatasetSimple, cmap map[string]Country, t time.Time) map[string][]DatasetSimple {
+func appendSummary(ws *WorldSummary, cmap map[string]Country, t time.Time) *WorldSummary {
 	for countryname, country := range cmap {
-		cs, ok := csmap[countryname]
+		cs, ok := ws.Countrys[countryname]
 		if !ok {
-			cs = make([]DatasetSimple, 0, 365)
+			cs = CountrySummary{
+				Daily: make([]DatasetSimple, 0, 365),
+			}
 		}
-		cs = append(cs, DatasetSimple{
-			Date: Unixtime(t),
+		cs.Daily = append(cs.Daily, DatasetSimple{
+			Date: TimeDaily(t),
 			CDR:  [3]uint64{country.Confirmed, country.Deaths, country.Recovered},
 		})
-		csmap[countryname] = cs
+		cs.CDR = [3]uint64{country.Confirmed, country.Deaths, country.Recovered}
+		ws.Countrys[countryname] = cs
 	}
-	return csmap
+	return ws
 }
 
-func storeSummary(csmap map[string][]DatasetSimple) error {
+func storeSummary(ws *WorldSummary) error {
 	fp, err := os.Create(SummaryDataPath)
 	if err != nil {
 		return err
@@ -501,7 +525,7 @@ func storeSummary(csmap map[string][]DatasetSimple) error {
 	w := bufio.NewWriterSize(fp, 128*1024)
 	enc := json.NewEncoder(w)
 	//enc.SetIndent("", "\t")
-	err = enc.Encode(csmap)
+	err = enc.Encode(ws)
 	if err != nil {
 		return err
 	}
