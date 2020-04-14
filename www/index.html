@@ -2,131 +2,131 @@
 <html lang="ja">
 
 <head>
-    <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>COVID-19 世界の様子</title>
-    <link rel="stylesheet" href="/css/bootstrap.min.css">
-    <style>
-        body {
-            font: sans-serif;
-            min-height: 75rem;
-            padding-top: 5.5rem;
-        }
+	<meta charset="utf-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+	<title>COVID-19 世界の様子</title>
+	<link rel="stylesheet" href="/css/bootstrap.min.css">
+	<style>
+		body {
+			font: sans-serif;
+			min-height: 75rem;
+			padding-top: 5.5rem;
+		}
 
-        #last-data {
-            font-size: 24pt;
-        }
+		#last-data {
+			font-size: 24pt;
+		}
 
-        #svgtreemap {
-            width: 100%;
-            max-width: 960px;
-        }
+		#svgtreemap {
+			width: 100%;
+			max-width: 1600px;
+		}
 
-        .axis path,
-        .axis line {
-            fill: none;
-            stroke: #000;
-            shape-rendering: crispEdges;
-        }
+		.axis path,
+		.axis line {
+			fill: none;
+			stroke: #000;
+			shape-rendering: crispEdges;
+		}
 
-        #svgcandlestick .x.axis path {
-            display: none;
-        }
+		#svgcandlestick .x.axis path {
+			display: none;
+		}
 
-        .x.axis line,
-        .y.axis line {
-            opacity: 0.15;
-        }
+		.x.axis line,
+		.y.axis line {
+			opacity: 0.15;
+		}
 
-        .line {
-            fill: none;
-            stroke: steelblue;
-            stroke-width: 1.5px;
-        }
+		.line {
+			fill: none;
+			stroke: steelblue;
+			stroke-width: 1.5px;
+		}
 
-        .ask {
-            color: #b94047;
-        }
+		.ask {
+			color: #b94047;
+		}
 
-        .bid {
-            color: #47ba41;
-        }
+		.bid {
+			color: #47ba41;
+		}
 
-        .table-hover tbody tr:hover.trade>td.ask {
-            background-color: #ffe6e6;
-        }
+		.table-hover tbody tr:hover.trade>td.ask {
+			background-color: #ffe6e6;
+		}
 
-        .table-hover tbody tr:hover.trade>td.bid {
-            background-color: #e6ffe6;
-        }
+		.table-hover tbody tr:hover.trade>td.bid {
+			background-color: #e6ffe6;
+		}
 
-        .table-hover tbody tr:hover.board-ask>td {
-            background-color: #ffe6e6;
-        }
+		.table-hover tbody tr:hover.board-ask>td {
+			background-color: #ffe6e6;
+		}
 
-        .table-hover tbody tr:hover.board-bid>td {
-            background-color: #e6ffe6;
-        }
+		.table-hover tbody tr:hover.board-bid>td {
+			background-color: #e6ffe6;
+		}
 
-        .trades-leave-active,
-        .trades-enter-active {
-            transition: opacity 5s;
-        }
+		.trades-leave-active,
+		.trades-enter-active {
+			transition: opacity 5s;
+		}
 
-        .trades-leave-to,
-        .trades-enter {
-            opacity: 0;
-        }
+		.trades-leave-to,
+		.trades-enter {
+			opacity: 0;
+		}
 
-        .trades-leave,
-        .trades-enter-to {
-            opacity: 1;
-        }
+		.trades-leave,
+		.trades-enter-to {
+			opacity: 1;
+		}
 
-        .trades-move {
-            transition: transform 5s;
-        }
+		.trades-move {
+			transition: transform 5s;
+		}
 
-        [v-cloak] {
-            display: none;
-        }
-    </style>
+		[v-cloak] {
+			display: none;
+		}
+	</style>
 </head>
 
 <body class="bg-light text-dark">
-    <div id="container">
-        <nav class="navbar fixed-top navbar-expand-lg navbar-light bg-light text-dark">
-            <span class="navbar-brand">COVID-19 世界の様子</span>
-            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarText">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarText">
-                <ul class="navbar-nav mr-auto">
-                    <li class="nav-item">
-                        <a class="navbar-brand nav-link" href="/chart/line.html" title="折れ線">折れ線</a>
-                    </li>
-                </ul>
-            </div>
-        </nav>
-        <main class="container" role="main">
-            <h1>世界の様子</h1>
-            <p class="lead">COVID-19の変動を記録していくサイトです。</p>
-            <hr>
-            <h2 v-cloak>現在</h2>
-            <p>
-                <span id="last-data" v-cloak>
-                    {{ confirmed_now }} {{ deaths_now }} {{ recovered_now }}
-                </span>
-            </p>
-            <hr>
-            <h2>Treemap</h2>
-            <div id="svgtreemap"></div>
-        </main>
-    </div>
-    <script src="/js/lib/jquery-3.4.1.min.js"></script>
-    <script src="/js/lib/bootstrap.min.js"></script>
-    <script src="/js/treemap.js"></script>
+	<div id="container">
+		<nav class="navbar fixed-top navbar-expand-lg navbar-light bg-light text-dark">
+			<span class="navbar-brand">COVID-19 世界の様子</span>
+			<button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarText">
+				<span class="navbar-toggler-icon"></span>
+			</button>
+			<div class="collapse navbar-collapse" id="navbarText">
+				<ul class="navbar-nav mr-auto">
+					<li class="nav-item">
+						<a class="navbar-brand nav-link" href="/chart/line.html" title="折れ線">折れ線</a>
+					</li>
+				</ul>
+			</div>
+		</nav>
+		<main class="container" role="main">
+			<h1>世界の様子</h1>
+			<p class="lead">COVID-19の変動を記録していくサイトです。</p>
+			<hr>
+			<h2 v-cloak>現在</h2>
+			<p>
+				<span id="last-data" v-cloak>
+					{{ confirmed_now }} {{ deaths_now }} {{ recovered_now }}
+				</span>
+			</p>
+			<hr>
+			<h2>Treemap</h2>
+			<div id="svgtreemap"></div>
+		</main>
+	</div>
+	<script src="/js/lib/jquery-3.4.1.min.js"></script>
+	<script src="/js/lib/bootstrap.min.js"></script>
+	<script src="/js/treemap.js"></script>
 </body>
 
 </html>

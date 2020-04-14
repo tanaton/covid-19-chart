@@ -73,19 +73,15 @@ func (t TimeDaily) MarshalJSON() ([]byte, error) {
 }
 
 type Dataset struct {
-	LastUpdate Unixtime `json:"last_update"`
-	Confirmed  uint64   `json:"confirmed"`
-	Deaths     uint64   `json:"deaths"`
-	Recovered  uint64   `json:"recovered"`
-	Latitude   float64  `json:"latitude"`
-	Longitude  float64  `json:"longitude"`
+	Confirmed  uint64              `json:"confirmed"`
+	Deaths     uint64              `json:"deaths"`
+	Recovered  uint64              `json:"recovered"`
+	LastUpdate *Unixtime           `json:"last_update,omitempty"`
+	Latitude   float64             `json:"latitude,omitempty"`
+	Longitude  float64             `json:"longitude,omitempty"`
+	Children   map[string]*Dataset `json:"children,omitempty"`
 }
-type Country struct {
-	Province  map[string]Dataset `json:"province"`
-	Confirmed uint64             `json:"confirmed"`
-	Deaths    uint64             `json:"deaths"`
-	Recovered uint64             `json:"recovered"`
-}
+
 type DatasetSimple struct {
 	Date TimeDaily `json:"date"`
 	CDR  [3]uint64 `json:"cdr"`
@@ -474,7 +470,7 @@ func updateDataFile() error {
 	return storeSummary(ws)
 }
 
-func convertJSON(t time.Time, name string) (map[string]Country, error) {
+func convertJSON(t time.Time, name string) (map[string]*Dataset, error) {
 	cmap, err := csvToCountryMap(filepath.Join(RepoDataPath, name))
 	if err != nil {
 		return nil, err
@@ -498,7 +494,7 @@ func convertJSON(t time.Time, name string) (map[string]Country, error) {
 	return cmap, nil
 }
 
-func appendSummary(ws *WorldSummary, cmap map[string]Country, t time.Time) *WorldSummary {
+func appendSummary(ws *WorldSummary, cmap map[string]*Dataset, t time.Time) *WorldSummary {
 	for countryname, country := range cmap {
 		cs, ok := ws.Countrys[countryname]
 		if !ok {
@@ -532,21 +528,16 @@ func storeSummary(ws *WorldSummary) error {
 	return w.Flush()
 }
 
-func csvToCountryMap(p string) (map[string]Country, error) {
+func csvToCountryMap(p string) (map[string]*Dataset, error) {
 	fp, err := os.Open(p)
 	if err != nil {
 		return nil, err
 	}
 	defer fp.Close()
 
-	var (
-		countrystr  string
-		countryold  string
-		provincestr string
-		hmax        int
-	)
+	var hmax int
 	indexmap := make(map[string]int, 9)
-	cmap := make(map[string]Country, 256)
+	cmap := make(map[string]*Dataset, 256)
 
 	r := csv.NewReader(fp)
 	// フィールドの数を可変にする
@@ -569,30 +560,20 @@ func csvToCountryMap(p string) (map[string]Country, error) {
 			// csv.Reader使ってるから不要？
 			continue
 		}
-		countrystr = strings.TrimSpace(cells[indexmap["Country"]])
-		if countrystr == "" {
-			countrystr = countryold
-		}
-		countryold = countrystr
+		countrystr := strings.TrimSpace(cells[indexmap["Country"]])
 		country, ok := cmap[countrystr]
 		if !ok {
-			country = Country{}
-			country.Province = make(map[string]Dataset)
+			country = &Dataset{}
 		}
+		var provincestr string
+		var admin2str string
 		if index, ok := indexmap["Province"]; ok {
 			provincestr = strings.TrimSpace(cells[index])
 			if ad, ok := indexmap["Admin2"]; ok {
-				if provincestr != "" && cells[ad] != "" {
-					provincestr = provincestr + "/" + cells[ad]
-				}
+				admin2str = cells[ad]
 			}
-			if provincestr == "" {
-				provincestr = "-"
-			}
-		} else {
-			provincestr = "-"
 		}
-		ds := Dataset{}
+		ds := &Dataset{}
 		if index, ok := indexmap["LastUpdate"]; ok {
 			// 日付フォーマットが複数存在する問題
 			var t time.Time
@@ -607,7 +588,8 @@ func csvToCountryMap(p string) (map[string]Country, error) {
 			} else {
 				t, _ = time.Parse("2006-01-02 15:04:05", lu)
 			}
-			ds.LastUpdate = Unixtime(t)
+			ds.LastUpdate = &Unixtime{}
+			*(ds.LastUpdate) = Unixtime(t)
 		}
 		if index, ok := indexmap["Confirmed"]; ok {
 			ds.Confirmed, _ = strconv.ParseUint(cells[index], 10, 64)
@@ -624,10 +606,42 @@ func csvToCountryMap(p string) (map[string]Country, error) {
 		if index, ok := indexmap["Longitude"]; ok {
 			ds.Longitude, _ = strconv.ParseFloat(cells[index], 64)
 		}
-		country.Province[provincestr] = ds
-		country.Confirmed += ds.Confirmed
-		country.Deaths += ds.Deaths
-		country.Recovered += ds.Recovered
+		if provincestr != "" {
+			// 州が有る
+			var province *Dataset
+			var ok bool
+			if country.Children != nil {
+				if province, ok = country.Children[provincestr]; !ok {
+					province = &Dataset{}
+				}
+			} else {
+				country.Children = make(map[string]*Dataset)
+				province = &Dataset{}
+			}
+			if admin2str != "" {
+				// 群がある
+				if province.Children == nil {
+					province.Children = make(map[string]*Dataset)
+				}
+				province.Children[admin2str] = ds
+				province.Confirmed += ds.Confirmed
+				province.Deaths += ds.Deaths
+				province.Recovered += ds.Recovered
+
+				country.Children[provincestr] = province
+				country.Confirmed += ds.Confirmed
+				country.Deaths += ds.Deaths
+				country.Recovered += ds.Recovered
+			} else {
+				country.Children[provincestr] = ds
+				country.Confirmed += ds.Confirmed
+				country.Deaths += ds.Deaths
+				country.Recovered += ds.Recovered
+			}
+		} else {
+			// 州が無い
+			country = ds
+		}
 		cmap[countrystr] = country
 	}
 	return cmap, nil

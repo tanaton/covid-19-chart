@@ -8,7 +8,7 @@ type Display = {
 }
 
 const svgIDTreemap = "svgtreemap";
-const treemapUrl = "/data/daily_reports/summary.json";
+const treemapUrl = "/data/daily_reports/now.json";
 
 type Box = {
 	readonly top: number;
@@ -17,32 +17,25 @@ type Box = {
 	readonly left: number;
 }
 
-type DatasetSimple = {
-	date: string;
-	cdr: [number, number, number];
-}
-
-type CountrySimple = {
-	daily: DatasetSimple[];
-	cdr: [number, number, number];
-}
-
-type Summary = {
-	countrys: {
-		[key in string]: CountrySimple;
+type Dataset = {
+	confirmed: number;
+	deaths: number;
+	recovered: number;
+	last_update?: number;
+	latitude?: number;
+	longitude?: number;
+	children?: {
+		[key in string]: Dataset;
 	}
-	cdr: [number, number, number];
+}
+type DailyData = {
+	[key in string]: Dataset;
 }
 
-type ChildrenHierarchy = {
-	name: string,
-	children?: ChildrenHierarchy[];
-	value: number;
-}
-
-type RootHierarchy = {
+type HierarchyDatum = {
 	name: string;
-	children: ChildrenHierarchy[];
+	value: number;
+	children?: HierarchyDatum[];
 }
 
 class TreemapChart {
@@ -52,19 +45,23 @@ class TreemapChart {
 
 	private svg: d3.Selection<SVGSVGElement, unknown, HTMLElement, unknown>;
 	private svgid: string;
-	private root?: RootHierarchy;
+	private nodes?: HierarchyDatum;
+	private colors: d3.ScaleOrdinal<string, string>;
 
 	constructor(svgid: string) {
 		this.svgid = svgid;
 		const div = document.getElementById(this.svgid);
-		this.width = div?.offsetWidth ?? 850;
+		this.width = div?.offsetWidth ?? 1560;
 		this.width = this.width - this.margin.left - this.margin.right;
-		this.height = 460 - this.margin.top - this.margin.bottom;
+		this.height = 960 - this.margin.top - this.margin.bottom;
+		this.colors = d3.scaleOrdinal(d3.schemeCategory10);
 
 		this.svg = d3.select("#" + this.svgid).append("svg");
 		this.svg
 			.attr("width", this.width + this.margin.left + this.margin.right + 10)
-			.attr("height", this.height + this.margin.top + this.margin.bottom + 10);
+			.attr("height", this.height + this.margin.top + this.margin.bottom + 10)
+			.append("g")
+			.attr("transform", "translate(" + this.margin.left + "," + this.margin.top + ")");
 	}
 	public dispose(): void {
 		const doc = document.getElementById(this.svgid);
@@ -72,17 +69,77 @@ class TreemapChart {
 			doc.innerHTML = "";
 		}
 	}
-	public addData(data: Summary): void {
-		// SummaryからRootHierarchyに変換する何か
+	public addData(data: DailyData): void {
+		const f = (key: string, data: Dataset): HierarchyDatum => {
+			const hd: HierarchyDatum = {
+				name: key,
+				value: data.confirmed
+			};
+			for (const objkey in data.children) {
+				if (!data.hasOwnProperty(objkey)) {
+					continue;
+				}
+				if (data.children) {
+					if (!hd.children) {
+						hd.children = [];
+					}
+					hd.children.push(f(key, data.children[objkey]));
+				}
+			}
+			return hd;
+		};
+		this.nodes = {
+			name: "世界の様子",
+			value: 0,
+			children: []
+		};
+		let c = 0;
+		let d = 0;
+		let r = 0;
+		for (const key in data) {
+			if (!data.hasOwnProperty(key)) {
+				continue;
+			}
+			this.nodes.children?.push(f(key, data[key]));
+			c += data[key].confirmed;
+			d += data[key].deaths;
+			r += data[key].recovered;
+		}
+		dispdata.confirmed_now = c;
+		dispdata.deaths_now = d;
+		dispdata.recovered_now = r;
 	}
 	public draw(): void {
-		let treemap = d3.treemap()
+		if (!this.nodes) {
+			// undefinedチェック
+			return;
+		}
+		const nodes = d3.hierarchy(this.nodes).sum(d => d.value);
+		const root = d3.treemap<HierarchyDatum>()
 			.size([this.width, this.height])
-			.padding(1)
-			.round(true);
+			.padding(2)
+			(nodes);
 
-		let root = d3.hierarchy(this.root);
-		treemap(root);
+		this.svg.selectAll("rect")
+			.data(root.leaves())
+			.enter()
+			.append("rect")
+			.attr('x', d => d.x0)
+			.attr('y', d => d.y0)
+			.attr('width', d => d.x1 - d.x0)
+			.attr('height', d => d.y1 - d.y0)
+			.style("stroke", "black")
+			.style("fill", "slateblue");
+
+		this.svg.selectAll("text")
+			.data(root.leaves())
+			.enter()
+			.append("text")
+			.attr("x", d => d.x0 + 5)    // +10 to adjust position (more right)
+			.attr("y", d => d.y0 + 20)    // +20 to adjust position (lower)
+			.text(d => d.data.name)
+			.attr("font-size", "15px")
+			.attr("fill", "white");
 	}
 }
 
