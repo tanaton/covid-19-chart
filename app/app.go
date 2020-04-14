@@ -134,27 +134,29 @@ func (app *App) Run(ctx context.Context) error {
 	}
 	monich := make(chan ResultMonitor)
 	rich := make(chan ResponseInfo, 32)
-	jsondata := [2]*AliasHandler{&AliasHandler{}, &AliasHandler{}}
+	jsondata := [3]*AliasHandler{&AliasHandler{}, &AliasHandler{}, &AliasHandler{}}
 	jsondata[0].SetPath(filepath.Join(ConvertDataPath, NowJSONDefaultName))
 	jsondata[1].SetPath(filepath.Join(ConvertDataPath, NowJSONDefaultName))
+	jsondata[2].SetPath(filepath.Join(ConvertDataPath, NowJSONDefaultName))
 
 	// 終了管理機能の起動
 	ctx, exitch := app.startExitManageProc(ctx)
 
 	// データ更新
 	updateData(ctx, true)
-	setJSONDataPath([]Alias{jsondata[0], jsondata[1]})
+	setJSONDataPath([]Alias{jsondata[0], jsondata[1], jsondata[2]})
 
 	// サーバ起動
 	app.wg.Add(1)
 	go app.webServerMonitoringProc(ctx, rich, monich)
 	app.wg.Add(1)
-	go app.updateDataProc(ctx, []Alias{jsondata[0], jsondata[1]})
+	go app.updateDataProc(ctx, []Alias{jsondata[0], jsondata[1], jsondata[2]})
 
 	// URL設定
 	http.Handle("/api/unko.in/1/monitor", &GetMonitoringHandler{ch: monich})
-	http.Handle("/data/daily_reports/now.json", jsondata[0])
-	http.Handle("/data/daily_reports/yesterday.json", jsondata[1])
+	http.Handle("/data/daily_reports/today.json", jsondata[0])
+	http.Handle("/data/daily_reports/-1day.json", jsondata[1])
+	http.Handle("/data/daily_reports/-2day.json", jsondata[2])
 	http.Handle("/", http.FileServer(http.Dir(PublicPath)))
 
 	ghfunc, err := gziphandler.GzipHandlerWithOpts(gziphandler.CompressionLevel(gzip.BestSpeed), gziphandler.ContentTypes(gzipContentTypeList))

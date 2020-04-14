@@ -8,7 +8,7 @@ type Display = {
 }
 
 const svgIDTreemap = "svgtreemap";
-const treemapUrl = "/data/daily_reports/now.json";
+const treemapUrlToday = "/data/daily_reports/today.json";
 
 type Box = {
 	readonly top: number;
@@ -38,6 +38,8 @@ type HierarchyDatum = {
 	children?: HierarchyDatum[];
 }
 
+type NumberStr = "confirmed" | "deaths" | "recovered";
+
 class TreemapChart {
 	private readonly margin: Box = { top: 10, right: 10, bottom: 20, left: 60 };
 	private width: number;
@@ -46,7 +48,10 @@ class TreemapChart {
 	private svg: d3.Selection<SVGSVGElement, unknown, HTMLElement, unknown>;
 	private svgid: string;
 	private nodes?: HierarchyDatum;
+	private data?: DailyData;
+	private target: NumberStr;
 	private colors: d3.ScaleOrdinal<string, string>;
+	private now: { [key in NumberStr]: number };
 
 	constructor(svgid: string) {
 		this.svgid = svgid;
@@ -55,6 +60,12 @@ class TreemapChart {
 		this.width = this.width - this.margin.left - this.margin.right;
 		this.height = 960 - this.margin.top - this.margin.bottom;
 		this.colors = d3.scaleOrdinal(d3.schemeCategory10);
+		this.target = "confirmed";
+		this.now = {
+			confirmed: 0,
+			deaths: 0,
+			recovered: 0
+		};
 
 		this.svg = d3.select("#" + this.svgid).append("svg");
 		this.svg
@@ -69,58 +80,66 @@ class TreemapChart {
 			doc.innerHTML = "";
 		}
 	}
-	public addData(data: DailyData): void {
-		const f = (key: string, data: Dataset): HierarchyDatum => {
-			const hd: HierarchyDatum = {
-				name: key,
-				value: data.confirmed
-			};
-			for (const objkey in data.children) {
-				if (!data.hasOwnProperty(objkey)) {
-					continue;
-				}
-				if (data.children) {
-					if (!hd.children) {
-						hd.children = [];
-					}
-					hd.children.push(f(key, data.children[objkey]));
-				}
-			}
-			return hd;
+	private clear(): void {
+		d3.select("svg").remove();
+	}
+	private childrenWalk(key: string, data: Dataset): HierarchyDatum {
+		const hd: HierarchyDatum = {
+			name: key,
+			value: data[this.target]
 		};
+		for (const objkey in data.children) {
+			if (!data.hasOwnProperty(objkey)) {
+				continue;
+			}
+			if (data.children) {
+				if (!hd.children) {
+					hd.children = [];
+				}
+				hd.children.push(this.childrenWalk(key, data.children[objkey]));
+			}
+		}
+		return hd;
+	}
+	private changeData(target: NumberStr): void {
+		if (!this.data) {
+			return;
+		}
 		this.nodes = {
 			name: "世界の様子",
 			value: 0,
 			children: []
 		};
-		let c = 0;
-		let d = 0;
-		let r = 0;
-		for (const key in data) {
-			if (!data.hasOwnProperty(key)) {
+		this.target = target;
+		for (const key in this.data) {
+			if (!this.data.hasOwnProperty(key)) {
 				continue;
 			}
-			this.nodes.children?.push(f(key, data[key]));
-			c += data[key].confirmed;
-			d += data[key].deaths;
-			r += data[key].recovered;
+			this.nodes.children?.push(this.childrenWalk(key, this.data[key]));
+			this.now.confirmed += this.data[key].confirmed;
+			this.now.deaths += this.data[key].deaths;
+			this.now.recovered += this.data[key].recovered;
 		}
-		dispdata.confirmed_now = c;
-		dispdata.deaths_now = d;
-		dispdata.recovered_now = r;
+		dispdata.confirmed_now = this.now.confirmed;
+		dispdata.deaths_now = this.now.deaths;
+		dispdata.recovered_now = this.now.recovered;
+	}
+	public addData(data: DailyData): void {
+		this.data = data;
+		this.changeData("confirmed");
 	}
 	public draw(): void {
 		if (!this.nodes) {
 			// undefinedチェック
 			return;
 		}
-		const nodes = d3.hierarchy(this.nodes).sum(d => d.value);
+		const nodes = d3.hierarchy(this.nodes).sum(d => d.value).sort((a, b) => b.data.value - a.data.value);
 		const root = d3.treemap<HierarchyDatum>()
 			.size([this.width, this.height])
 			.padding(2)
 			(nodes);
 
-		this.svg.selectAll("rect")
+		this.svg.selectAll(".rect_data")
 			.data(root.leaves())
 			.enter()
 			.append("rect")
@@ -129,17 +148,48 @@ class TreemapChart {
 			.attr('width', d => d.x1 - d.x0)
 			.attr('height', d => d.y1 - d.y0)
 			.style("stroke", "black")
-			.style("fill", "slateblue");
+			.style("fill", d => this.colors(d.data.name));
 
-		this.svg.selectAll("text")
+		type textfunc = ((d: d3.HierarchyRectangularNode<HierarchyDatum>) => string);
+		type sizefunc = ((d: d3.HierarchyRectangularNode<HierarchyDatum>) => number);
+		const textvisible = (func: textfunc): textfunc => {
+			const min = this.now[this.target] / 2000;
+			return (d: d3.HierarchyRectangularNode<HierarchyDatum>): string => {
+				if (d.data.value < min) {
+					return "";
+				}
+				return func(d);
+			}
+		};
+		const fontsize: sizefunc = d => {
+			let s = (((d.x1 - d.x0) + (d.y1 - d.y0)) / 2) / 5;
+			if (s > 100) {
+				s = 100;
+			} else if (s < 8) {
+				s = 8;
+			}
+			return s;
+		}
+		const numf = d3.format(",.3s");
+		this.svg.selectAll(".text_country")
 			.data(root.leaves())
 			.enter()
 			.append("text")
-			.attr("x", d => d.x0 + ((d.x1 - d.x0) / 2))    // +10 to adjust position (more right)
-			.attr("y", d => d.y0 + ((d.y1 - d.y0) / 2))    // +20 to adjust position (lower)
-			.text(d => d.data.name)
-			.attr("font-size", "15px")
-			.attr("fill", "white");
+			.attr("x", d => d.x0 + 5)
+			.attr("y", d => d.y0 + 5 + fontsize(d))
+			.text(textvisible(d => d.data.name))
+			.attr("font-size", d => fontsize(d) + "px")
+			.attr("fill", "black");
+
+		this.svg.selectAll(".text_value")
+			.data(root.leaves())
+			.enter()
+			.append("text")
+			.attr("x", d => d.x0 + 5)
+			.attr("y", d => d.y0 + 5 + fontsize(d) * 2)
+			.text(textvisible(d => "(" + numf(d.data.value) + ")"))
+			.attr("font-size", d => fontsize(d) + "px")
+			.attr("fill", "black");
 	}
 }
 
@@ -148,7 +198,7 @@ class Client {
 
 	constructor() {
 		this.treemap = new TreemapChart(svgIDTreemap);
-		Client.ajax(treemapUrl, (xhr: XMLHttpRequest): void => {
+		Client.ajax(treemapUrlToday, (xhr: XMLHttpRequest): void => {
 			this.treemap.addData(JSON.parse(xhr.responseText));
 			this.treemap.draw();
 		});
