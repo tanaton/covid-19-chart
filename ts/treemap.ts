@@ -135,8 +135,8 @@ class TreemapChart {
 			.data(root.leaves())
 			.enter()
 			.append("text")
-			.attr("x", d => d.x0 + 5)    // +10 to adjust position (more right)
-			.attr("y", d => d.y0 + 20)    // +20 to adjust position (lower)
+			.attr("x", d => d.x0 + ((d.x1 - d.x0) / 2))    // +10 to adjust position (more right)
+			.attr("y", d => d.y0 + ((d.y1 - d.y0) / 2))    // +20 to adjust position (lower)
 			.text(d => d.data.name)
 			.attr("font-size", "15px")
 			.attr("fill", "white");
