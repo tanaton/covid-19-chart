@@ -55,7 +55,16 @@
 				</span>
 			</p>
 			<hr>
-			<h2>Treemap</h2>
+			<h2>国の割合</h2>
+			<p>
+				<div class="btn-group btn-group-toggle" data-toggle="buttons">
+					<label v-for="category in categorys" class="btn btn-secondary" v-cloak>
+						<input type="radio" v-model="form.category.radio" v-bind:value="category.id"
+							v-on:change="categoryChange">
+						{{ category.name }}
+					</label>
+				</div>
+			</p>
 			<div id="svgtreemap"></div>
 		</main>
 	</div>

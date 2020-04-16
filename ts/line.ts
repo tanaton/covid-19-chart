@@ -166,7 +166,7 @@ class LineChart {
 	}
 	public addData(raw: WorldSummary): void {
 		this.raw = raw;
-		this.changeData("confirmed");
+		this.changeData(this.target);
 	}
 	public draw(): void {
 		if (!this.linedata) {

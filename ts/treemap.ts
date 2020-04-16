@@ -1,17 +1,6 @@
 import * as d3 from 'd3';
 import Vue from 'vue';
 
-type Display = {
-	confirmed_now: number;
-	deaths_now: number;
-	recovered_now: number;
-}
-
-const svgIDTreemap = "svgtreemap";
-const treemapUrlToday = "/data/daily_reports/today.json";
-const treemapUrl1dayago = "/data/daily_reports/-1day.json";
-const treemapUrl2dayago = "/data/daily_reports/-2day.json";
-
 type Box = {
 	readonly top: number;
 	readonly right: number;
@@ -42,6 +31,23 @@ type HierarchyDatum = {
 }
 
 type NumberStr = "confirmed" | "deaths" | "recovered";
+
+type Display = {
+	confirmed_now: number;
+	deaths_now: number;
+	recovered_now: number;
+	categorys: Array<{ id: NumberStr, name: string }>;
+	form: {
+		category: {
+			radio: NumberStr
+		}
+	}
+}
+
+const svgIDTreemap = "svgtreemap";
+const treemapUrlToday = "/data/daily_reports/today.json";
+const treemapUrl1dayago = "/data/daily_reports/-1day.json";
+const treemapUrl2dayago = "/data/daily_reports/-2day.json";
 
 class TreemapChart {
 	private readonly margin: Box = { top: 10, right: 10, bottom: 20, left: 60 };
@@ -83,7 +89,7 @@ class TreemapChart {
 			doc.innerHTML = "";
 		}
 	}
-	private clear(): void {
+	public clear(): void {
 		this.svg.selectAll("g").remove();
 	}
 	private childrenWalk(key: string, data: Dataset, _1dayago?: Dataset): HierarchyDatum {
@@ -100,17 +106,17 @@ class TreemapChart {
 				continue;
 			}
 			let val1dayago: Dataset | undefined;
-			if (_1dayago?.children?.hasOwnProperty(key)) {
-				val1dayago = _1dayago.children[key];
+			if (_1dayago?.children?.hasOwnProperty(objkey)) {
+				val1dayago = _1dayago.children[objkey];
 			}
 			if (!hd.children) {
 				hd.children = [];
 			}
-			//hd.children.push(this.childrenWalk(objkey, data.children[objkey], val1dayago, val2dayago));
+			//hd.children.push(this.childrenWalk(objkey, data.children[objkey], val1dayago));
 		}
 		return hd;
 	}
-	private changeData(target: NumberStr): void {
+	public changeData(target: NumberStr): void {
 		if (!this.data) {
 			return;
 		}
@@ -120,6 +126,11 @@ class TreemapChart {
 			children: []
 		};
 		this.target = target;
+		this.now = {
+			confirmed: 0,
+			deaths: 0,
+			recovered: 0,
+		};
 		for (const key in this.data[0]) {
 			if (!this.data[0].hasOwnProperty(key)) {
 				continue;
@@ -139,7 +150,7 @@ class TreemapChart {
 	}
 	public addData(data: DailyData[]): void {
 		this.data = data;
-		this.changeData("confirmed");
+		this.changeData(this.target);
 	}
 	public draw(): void {
 		if (!this.nodes) {
@@ -244,6 +255,11 @@ class Client {
 	public dispose(): void {
 		this.treemap?.dispose();
 	}
+	public changeCategory(cate: NumberStr): void {
+		this.treemap.clear();
+		this.treemap.changeData(cate);
+		this.treemap.draw();
+	}
 	public static get(url: string, func: (xhr: XMLHttpRequest) => void, err: (txt: string) => void) {
 		const xhr = new XMLHttpRequest();
 		xhr.ontimeout = (): void => {
@@ -272,11 +288,26 @@ class Client {
 const dispdata: Display = {
 	confirmed_now: 0,
 	deaths_now: 0,
-	recovered_now: 0
+	recovered_now: 0,
+	categorys: [
+		{ id: "confirmed", name: "感染数" },
+		{ id: "deaths", name: "死亡数" },
+		{ id: "recovered", name: "回復数" }
+	],
+	form: {
+		category: {
+			radio: "confirmed"
+		}
+	}
 };
 const vm = new Vue({
 	el: "#container",
-	data: dispdata
+	data: dispdata,
+	methods: {
+		categoryChange: () => {
+			cli.changeCategory(dispdata.form.category.radio);
+		}
+	}
 });
 const cli = new Client();
 cli.run();
