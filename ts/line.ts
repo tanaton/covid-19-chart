@@ -1,12 +1,6 @@
 import * as d3 from 'd3';
 import Vue from 'vue';
 
-type Display = {
-	confirmed_now: number;
-	deaths_now: number;
-	recovered_now: number;
-}
-
 type Box = {
 	readonly top: number;
 	readonly right: number;
@@ -38,6 +32,18 @@ type Context = {
 }
 
 type NumberStr = "confirmed" | "deaths" | "recovered";
+type YScaleType = "Liner" | "Log";
+
+type Display = {
+	confirmed_now: number;
+	deaths_now: number;
+	recovered_now: number;
+	categorys: Array<{ id: NumberStr, name: string }>;
+	yscales: Array<{ id: YScaleType, name: string }>;
+	nowcategory: NumberStr;
+	nowyscale: YScaleType;
+}
+
 const NumberIndex: { readonly [key in NumberStr]: number } = {
 	confirmed: 0,
 	deaths: 1,
@@ -46,6 +52,8 @@ const NumberIndex: { readonly [key in NumberStr]: number } = {
 const svgIDLine = "svgline";
 const lineUrl = "/data/daily_reports/summary.json";
 const timeFormat = d3.timeFormat("%Y/%m/%d");
+const line_xd_default: [Date, Date] = [new Date(2099, 11, 31), new Date(2001, 0, 1)];
+const line_yd_default: [number, number] = [0, 0];
 
 class LineChart {
 	private readonly margin: Box = { top: 10, right: 10, bottom: 20, left: 60 };
@@ -82,11 +90,11 @@ class LineChart {
 			.attr("height", this.height + this.margin.top + this.margin.bottom + 10);
 
 		this.line_x = d3.scaleTime()
-			.domain([new Date(2099, 11, 31), new Date(2001, 0, 1)])
+			.domain(line_xd_default.concat())
 			.range([0, this.width]);
 		//this.line_y = d3.scaleLog()
 		this.line_y = d3.scaleLinear()
-			.domain([0, 0])
+			.domain(line_yd_default.concat())
 			.range([this.height, 0]);
 		this.line_xAxis = d3.axisBottom<Date>(this.line_x)
 			.tickSizeInner(-this.height)
@@ -112,10 +120,10 @@ class LineChart {
 			doc.innerHTML = "";
 		}
 	}
-	private clear(): void {
+	public clear(): void {
 		this.svg.selectAll("g").remove();
 	}
-	private changeData(target: NumberStr): void {
+	public changeData(target: NumberStr): void {
 		if (!this.raw) {
 			return;
 		}
@@ -125,8 +133,9 @@ class LineChart {
 		const index = NumberIndex[target];
 		const countrys = this.raw.countrys;
 		const atoi = (str: string): number => parseInt(str, 10);
-		const line_xd = this.line_x.domain();
+		const line_xd = line_xd_default.concat();
 		const line_yd = this.line_y.domain();
+		line_yd[1] = line_yd_default[1];
 		for (const key in countrys) {
 			if (!countrys.hasOwnProperty(key)) {
 				continue;
@@ -167,6 +176,31 @@ class LineChart {
 	public addData(raw: WorldSummary): void {
 		this.raw = raw;
 		this.changeData(this.target);
+	}
+	public resetYScale(scale: YScaleType) {
+		const line_yd = this.line_y.domain();
+		switch (scale) {
+			case "Liner":
+				this.line_y = d3.scaleLinear();
+				line_yd[0] = 0;
+				break;
+			case "Log":
+				this.line_y = d3.scaleLog();
+				line_yd[0] = 1;
+				break;
+			default:
+				this.line_y = d3.scaleLinear();
+				line_yd[0] = 0;
+				break;
+		}
+		this.line_y.range([this.height, 0]);
+		this.line_y.domain(line_yd);
+		this.line_y.nice();
+
+		this.line_yAxis = d3.axisLeft<number>(this.line_y)
+			.tickSizeInner(-this.width)
+			.tickPadding(7)
+			.ticks(5);
 	}
 	public draw(): void {
 		if (!this.linedata) {
@@ -234,6 +268,16 @@ class Client {
 	public dispose(): void {
 		this.line?.dispose();
 	}
+	public changeCategory(cate: NumberStr): void {
+		this.line.clear();
+		this.line.changeData(cate);
+		this.line.draw();
+	}
+	public changeYScale(scale: YScaleType): void {
+		this.line.clear();
+		this.line.resetYScale(scale);
+		this.line.draw();
+	}
 	public static get(url: string, func: (xhr: XMLHttpRequest) => void, err: (txt: string) => void) {
 		const xhr = new XMLHttpRequest();
 		xhr.ontimeout = (): void => {
@@ -262,11 +306,30 @@ class Client {
 const dispdata: Display = {
 	confirmed_now: 0,
 	deaths_now: 0,
-	recovered_now: 0
+	recovered_now: 0,
+	categorys: [
+		{ id: "confirmed", name: "感染数" },
+		{ id: "deaths", name: "死亡数" },
+		{ id: "recovered", name: "回復数" }
+	],
+	yscales: [
+		{ id: "Liner", name: "Y軸線形" },
+		{ id: "Log", name: "Y軸対数" },
+	],
+	nowcategory: "confirmed",
+	nowyscale: "Liner"
 };
 const vm = new Vue({
 	el: "#container",
-	data: dispdata
+	data: dispdata,
+	methods: {
+		categoryChange: () => {
+			cli.changeCategory(dispdata.nowcategory);
+		},
+		yscaleChange: () => {
+			cli.changeYScale(dispdata.nowyscale);
+		}
+	}
 });
 const cli = new Client();
 cli.run();

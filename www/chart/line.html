@@ -61,7 +61,25 @@
 			<h1>世界の様子</h1>
 			<p class="lead">COVID-19の変動を記録していくサイトです。</p>
 			<hr>
-			<h2>折れ線</h2>
+			<div class="row">
+				<div class="col-4 align-self-start">
+					<h2>折れ線で見る様子</h2>
+				</div>
+				<div class="col-4 align-self-end" v-cloak>
+					<div v-for="yscale in yscales" class="form-check form-check-inline">
+						<input class="form-check-input" type="radio" v-bind:name="yscale.id" v-bind:id="yscale.id"
+							v-model="nowyscale" v-bind:value="yscale.id" v-on:change="yscaleChange">
+						<label class="form-check-label" v-bind:for="yscale.id">{{ yscale.name }}</label>
+					</div>
+				</div>
+				<div class="col-4 align-self-end" v-cloak>
+					<div v-for="category in categorys" class="form-check form-check-inline">
+						<input class="form-check-input" type="radio" v-bind:name="category.id" v-bind:id="category.id"
+							v-model="nowcategory" v-bind:value="category.id" v-on:change="categoryChange">
+						<label class="form-check-label" v-bind:for="category.id">{{ category.name }}</label>
+					</div>
+				</div>
+			</div>
 			<div id="svgline"></div>
 		</main>
 	</div>

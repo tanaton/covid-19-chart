@@ -48,23 +48,26 @@
 			<h1>世界の様子</h1>
 			<p class="lead">COVID-19の変動を記録していくサイトです。</p>
 			<hr>
-			<h2 v-cloak>現在</h2>
+			<h2>現在</h2>
 			<p>
 				<span id="last-data" v-cloak>
 					{{ confirmed_now }} {{ deaths_now }} {{ recovered_now }}
 				</span>
 			</p>
 			<hr>
-			<h2>国の割合</h2>
-			<p>
-				<div class="btn-group btn-group-toggle" data-toggle="buttons">
-					<label v-for="category in categorys" class="btn btn-secondary" v-cloak>
-						<input type="radio" v-model="form.category.radio" v-bind:value="category.id"
-							v-on:change="categoryChange">
-						{{ category.name }}
-					</label>
+			<div class="row">
+				<div class="col-4 align-self-start">
+					<h2>国の割合</h2>
 				</div>
-			</p>
+				<div class="col-4 align-self-end"></div>
+				<div class="col-4 align-self-end" v-cloak>
+					<div v-for="category in categorys" class="form-check form-check-inline">
+						<input class="form-check-input" type="radio" v-bind:name="category.id" v-bind:id="category.id"
+							v-model="nowcategory" v-bind:value="category.id" v-on:change="categoryChange">
+						<label class="form-check-label" v-bind:for="category.id">{{ category.name }}</label>
+					</div>
+				</div>
+			</div>
 			<div id="svgtreemap"></div>
 		</main>
 	</div>

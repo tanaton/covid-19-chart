@@ -37,11 +37,7 @@ type Display = {
 	deaths_now: number;
 	recovered_now: number;
 	categorys: Array<{ id: NumberStr, name: string }>;
-	form: {
-		category: {
-			radio: NumberStr
-		}
-	}
+	nowcategory: NumberStr;
 }
 
 const svgIDTreemap = "svgtreemap";
@@ -126,6 +122,7 @@ class TreemapChart {
 			children: []
 		};
 		this.target = target;
+		dispdata.nowcategory = target;
 		this.now = {
 			confirmed: 0,
 			deaths: 0,
@@ -174,19 +171,38 @@ class TreemapChart {
 		}
 		const numfs = d3.format(",.3s");
 		const numf = d3.format(",d");
+		const numff = d3.format(".2f");
 		const visiblemin = this.now[this.target] / 10000;
+		const percent = (active?: [number, number]): string => {
+			if (!active) {
+				return "";
+			}
+			if (active[0] == 0) {
+				return "";
+			}
+			const p = 100 - ((active[1] / active[0]) * 100);
+			return p > 0 ? `▼${numff(p)}%` : `▲${numff(p)}%`;
+		}
 		const textdata = (d: d3.HierarchyRectangularNode<HierarchyDatum>): Array<{ name: string, size: number }> => {
 			if (d.data.value < visiblemin) {
 				return [];
 			}
 			const size = fontsize(d);
-			return [{
+			const ret = [{
 				name: d.data.name,
 				size: size
 			}, {
-				name: "(" + numfs(d.data.value) + ")",
+				name: numfs(d.data.value),
 				size: size
 			}];
+			const per = percent(d.data.active);
+			if (per !== "") {
+				ret.push({
+					name: per,
+					size: size
+				});
+			}
+			return ret;
 		};
 		const leaf = this.svg.selectAll("g")
 			.data(root.leaves())
@@ -217,7 +233,7 @@ class TreemapChart {
 			.data(textdata)
 			.join("tspan")
 			.attr("x", 5)
-			.attr("y", (d, i) => 5 + d.size * (i + 1))
+			.attr("y", (d, i) => d.size * (i + 1))
 			.attr("fill", "black")
 			.text(d => d.name);
 
@@ -294,18 +310,14 @@ const dispdata: Display = {
 		{ id: "deaths", name: "死亡数" },
 		{ id: "recovered", name: "回復数" }
 	],
-	form: {
-		category: {
-			radio: "confirmed"
-		}
-	}
+	nowcategory: "confirmed"
 };
 const vm = new Vue({
 	el: "#container",
 	data: dispdata,
 	methods: {
 		categoryChange: () => {
-			cli.changeCategory(dispdata.form.category.radio);
+			cli.changeCategory(dispdata.nowcategory);
 		}
 	}
 });
