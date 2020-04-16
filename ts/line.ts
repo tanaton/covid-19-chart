@@ -82,7 +82,7 @@ class LineChart {
 			.attr("height", this.height + this.margin.top + this.margin.bottom + 10);
 
 		this.line_x = d3.scaleTime()
-			.domain([new Date(2099, 12, 31), new Date(2001, 1, 1)])
+			.domain([new Date(2099, 11, 31), new Date(2001, 0, 1)])
 			.range([0, this.width]);
 		this.line_y = d3.scaleLinear()
 			.domain([8_000_000_000, -8_000_000_000])
@@ -94,7 +94,8 @@ class LineChart {
 			.ticks(5);
 		this.line_yAxis = d3.axisLeft(this.line_y)
 			.tickSizeInner(-this.width)
-			.tickPadding(7);
+			.tickPadding(7)
+			.ticks(5);
 		this.line_line = d3.line<ChartPathData>()
 			.curve(d3.curveLinear)
 			.x(d => this.line_x(d.date))
@@ -188,11 +189,12 @@ class LineChart {
 
 		this.svg.append("g")				// 全体x目盛軸
 			.attr("class", "x axis")
-			.attr("transform", `translate(0,${this.height})`)
+			.attr("transform", `translate(${this.margin.left},${this.height + this.margin.top})`)
 			.call(this.line_xAxis);
 
 		this.svg.append("g")				// 全体y目盛軸
 			.attr("class", "y axis")
+			.attr("transform", `translate(${this.margin.left},${this.margin.top})`)
 			.call(this.line_yAxis);
 	}
 }

@@ -562,7 +562,7 @@ func csvToCountryMap(p string) (map[string]*Dataset, error) {
 			// csv.Reader使ってるから不要？
 			continue
 		}
-		countrystr := strings.TrimSpace(cells[indexmap["Country"]])
+		countrystr := convertNotation(strings.TrimSpace(cells[indexmap["Country"]]))
 		country, ok := cmap[countrystr]
 		if !ok {
 			country = &Dataset{}
@@ -670,6 +670,16 @@ func headerToSubject(cell string) string {
 		str = "Longitude"
 	}
 	return str
+}
+
+func convertNotation(country string) string {
+	switch country {
+	case "Mainland China":
+		return "China"
+	case "UK":
+		return "United Kingdom"
+	}
+	return country
 }
 
 func checkAndCreateDir(p string) error {
