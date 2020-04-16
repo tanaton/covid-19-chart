@@ -613,7 +613,8 @@ func csvToCountryMap(p string) (map[string]*Dataset, error) {
 			var province *Dataset
 			var ok bool
 			if country.Children != nil {
-				if province, ok = country.Children[provincestr]; !ok {
+				province, ok = country.Children[provincestr]
+				if !ok {
 					province = &Dataset{}
 				}
 			} else {
@@ -626,23 +627,20 @@ func csvToCountryMap(p string) (map[string]*Dataset, error) {
 					province.Children = make(map[string]*Dataset)
 				}
 				province.Children[admin2str] = ds
-				province.Confirmed += ds.Confirmed
-				province.Deaths += ds.Deaths
-				province.Recovered += ds.Recovered
-
-				country.Children[provincestr] = province
-				country.Confirmed += ds.Confirmed
-				country.Deaths += ds.Deaths
-				country.Recovered += ds.Recovered
-			} else {
-				country.Children[provincestr] = ds
-				country.Confirmed += ds.Confirmed
-				country.Deaths += ds.Deaths
-				country.Recovered += ds.Recovered
 			}
+			province.Confirmed += ds.Confirmed
+			province.Deaths += ds.Deaths
+			province.Recovered += ds.Recovered
+
+			country.Children[provincestr] = province
+			country.Confirmed += ds.Confirmed
+			country.Deaths += ds.Deaths
+			country.Recovered += ds.Recovered
 		} else {
 			// 州が無い
-			country = ds
+			country.Confirmed += ds.Confirmed
+			country.Deaths += ds.Deaths
+			country.Recovered += ds.Recovered
 		}
 		cmap[countrystr] = country
 	}

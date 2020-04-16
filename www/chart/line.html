@@ -5,7 +5,7 @@
 	<meta charset="utf-8">
 	<meta http-equiv="X-UA-Compatible" content="IE=edge">
 	<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-	<title>COVID-19 世界の様子</title>
+	<title>COVID-19 世界の様子 - 折れ線</title>
 	<link rel="stylesheet" href="/css/bootstrap.min.css">
 	<style>
 		body {
@@ -14,13 +14,27 @@
 			padding-top: 5.5rem;
 		}
 
-		#last-data {
-			font-size: 24pt;
-		}
-
-		#svgtreemap {
+		#svgline {
 			width: 100%;
 			max-width: 1600px;
+		}
+
+		.axis path,
+		.axis line {
+			fill: none;
+			stroke: #000;
+			shape-rendering: crispEdges;
+		}
+
+		.x.axis line,
+		.y.axis line {
+			opacity: 0.15;
+		}
+
+		.line {
+			fill: none;
+			stroke: steelblue;
+			stroke-width: 1.5px;
 		}
 
 		[v-cloak] {
@@ -39,7 +53,7 @@
 			<div class="collapse navbar-collapse" id="navbarText">
 				<ul class="navbar-nav mr-auto">
 					<li class="nav-item">
-						<a class="navbar-brand nav-link" href="/chart/line.html" title="折れ線">折れ線</a>
+						<a class="navbar-brand nav-link" href="/" title="世界の様子">世界の様子</a>
 					</li>
 				</ul>
 			</div>
@@ -48,20 +62,13 @@
 			<h1>世界の様子</h1>
 			<p class="lead">COVID-19の変動を記録していくサイトです。</p>
 			<hr>
-			<h2 v-cloak>現在</h2>
-			<p>
-				<span id="last-data" v-cloak>
-					{{ confirmed_now }} {{ deaths_now }} {{ recovered_now }}
-				</span>
-			</p>
-			<hr>
-			<h2>Treemap</h2>
-			<div id="svgtreemap"></div>
+			<h2>折れ線</h2>
+			<div id="svgline"></div>
 		</main>
 	</div>
 	<script src="/js/lib/jquery-3.4.1.min.js"></script>
 	<script src="/js/lib/bootstrap.min.js"></script>
-	<script src="/js/treemap.js"></script>
+	<script src="/js/line.js"></script>
 </body>
 
 </html>

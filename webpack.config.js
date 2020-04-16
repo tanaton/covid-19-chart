@@ -3,7 +3,8 @@ module.exports = {
 	//mode: 'development', 
 	mode: 'production',
 	entry: {
-		treemap: './ts/treemap.ts'
+		treemap: './ts/treemap.ts',
+		line: './ts/line.ts'
 	},
 	output: {
 		path: path.join(__dirname, 'www/js'),
