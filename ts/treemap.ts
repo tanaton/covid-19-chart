@@ -75,9 +75,7 @@ class TreemapChart {
 		this.svg = d3.select("#" + this.svgid).append("svg");
 		this.svg
 			.attr("width", this.width + this.margin.left + this.margin.right + 10)
-			.attr("height", this.height + this.margin.top + this.margin.bottom + 10)
-			.append("g")
-			.attr("transform", "translate(" + this.margin.left + "," + this.margin.top + ")");
+			.attr("height", this.height + this.margin.top + this.margin.bottom + 10);
 	}
 	public dispose(): void {
 		const doc = document.getElementById(this.svgid);
@@ -86,7 +84,7 @@ class TreemapChart {
 		}
 	}
 	private clear(): void {
-
+		this.svg.selectAll("g").remove();
 	}
 	private childrenWalk(key: string, data: Dataset, _1dayago?: Dataset): HierarchyDatum {
 		const hd: HierarchyDatum = {
@@ -154,14 +152,38 @@ class TreemapChart {
 		const root = d3.treemap<HierarchyDatum>()
 			.size([this.width, this.height])
 			(nodes);
-
-		this.svg.selectAll(".rect_data")
+		const fontsize = (d: d3.HierarchyRectangularNode<HierarchyDatum>): number => {
+			let s = (((d.x1 - d.x0) + (d.y1 - d.y0)) / 2) / 5;
+			if (s > 100) {
+				s = 100;
+			} else if (s < 5) {
+				s = 5;
+			}
+			return s;
+		}
+		const numfs = d3.format(",.3s");
+		const numf = d3.format(",d");
+		const visiblemin = this.now[this.target] / 10000;
+		const textdata = (d: d3.HierarchyRectangularNode<HierarchyDatum>): Array<{ name: string, size: number }> => {
+			if (d.data.value < visiblemin) {
+				return [];
+			}
+			const size = fontsize(d);
+			return [{
+				name: d.data.name,
+				size: size
+			}, {
+				name: "(" + numfs(d.data.value) + ")",
+				size: size
+			}];
+		};
+		const leaf = this.svg.selectAll("g")
 			.data(root.leaves())
-			.enter()
-			.append("rect")
+			.join("g")
+			.attr("transform", d => `translate(${d.x0},${d.y0})`);
+
+		leaf.append("rect")
 			.attr('class', 'rect_data')
-			.attr('x', d => d.x0)
-			.attr('y', d => d.y0)
 			.attr('width', d => d.x1 - d.x0)
 			.attr('height', d => d.y1 - d.y0)
 			.style("stroke", "black")
@@ -178,45 +200,18 @@ class TreemapChart {
 				return "red";
 			});
 
-		type textfunc = ((d: d3.HierarchyRectangularNode<HierarchyDatum>) => string);
-		type sizefunc = ((d: d3.HierarchyRectangularNode<HierarchyDatum>) => number);
-		const textvisible = (func: textfunc): textfunc => {
-			const min = this.now[this.target] / 4000;
-			return (d: d3.HierarchyRectangularNode<HierarchyDatum>): string => {
-				return (d.data.value < min) ? "" : func(d);
-			}
-		};
-		const fontsize: sizefunc = d => {
-			let s = (((d.x1 - d.x0) + (d.y1 - d.y0)) / 2) / 5;
-			if (s > 100) {
-				s = 100;
-			} else if (s < 5) {
-				s = 5;
-			}
-			return s;
-		}
-		const numf = d3.format(",.3s");
-		this.svg.selectAll(".text_country")
-			.data(root.leaves())
-			.enter()
-			.append("text")
-			.attr('class', 'text_country')
-			.attr("x", d => d.x0 + 5)
-			.attr("y", d => d.y0 + 5 + fontsize(d))
-			.text(textvisible(d => d.data.name))
+		leaf.append("text")
 			.attr("font-size", d => fontsize(d) + "px")
-			.attr("fill", "black");
+			.selectAll("tspan")
+			.data(textdata)
+			.join("tspan")
+			.attr("x", 5)
+			.attr("y", (d, i) => 5 + d.size * (i + 1))
+			.attr("fill", "black")
+			.text(d => d.name);
 
-		this.svg.selectAll(".text_value")
-			.data(root.leaves())
-			.enter()
-			.append("text")
-			.attr('class', 'text_value')
-			.attr("x", d => d.x0 + 5)
-			.attr("y", d => d.y0 + 5 + fontsize(d) * 2)
-			.text(textvisible(d => "(" + numf(d.data.value) + ")"))
-			.attr("font-size", d => fontsize(d) + "px")
-			.attr("fill", "black");
+		leaf.append("title")
+			.text(d => `${d.data.name}\n${numf(d.data.value)}`);
 	}
 }
 
