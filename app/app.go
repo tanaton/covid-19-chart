@@ -676,8 +676,10 @@ func convertNotation(country string) string {
 	switch country {
 	case "Mainland China":
 		return "China"
-	case "UK":
+	case "UK", "North Ireland":
 		return "United Kingdom"
+	case "Ivory Coast": // コートジボワール
+		return "Cote d'Ivoire"
 	}
 	return country
 }

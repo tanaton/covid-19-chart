@@ -54,9 +54,9 @@ class LineChart {
 
 	private line?: d3.Selection<SVGGElement, Context, SVGSVGElement, unknown>;
 	private line_x: d3.ScaleTime<number, number>;
-	private line_y: d3.ScaleLinear<number, number>;
+	private line_y: d3.ScaleLinear<number, number> | d3.ScaleLogarithmic<number, number>;
 	private line_xAxis: d3.Axis<Date>;
-	private line_yAxis: d3.Axis<number | { valueOf(): number; }>;
+	private line_yAxis: d3.Axis<number>;
 	private line_line: d3.Line<ChartPathData>;
 	private line_path_d: (d: Context) => string | null;
 	private line_color: d3.ScaleOrdinal<string, string>;
@@ -84,15 +84,16 @@ class LineChart {
 		this.line_x = d3.scaleTime()
 			.domain([new Date(2099, 11, 31), new Date(2001, 0, 1)])
 			.range([0, this.width]);
+		//this.line_y = d3.scaleLog()
 		this.line_y = d3.scaleLinear()
-			.domain([8_000_000_000, -8_000_000_000])
+			.domain([0, 0])
 			.range([this.height, 0]);
 		this.line_xAxis = d3.axisBottom<Date>(this.line_x)
 			.tickSizeInner(-this.height)
 			.tickFormat(timeFormat)
 			.tickPadding(7)
 			.ticks(5);
-		this.line_yAxis = d3.axisLeft(this.line_y)
+		this.line_yAxis = d3.axisLeft<number>(this.line_y)
 			.tickSizeInner(-this.width)
 			.tickPadding(7)
 			.ticks(5);
@@ -145,9 +146,6 @@ class LineChart {
 				if (date.getTime() > line_xd[1].getTime()) {
 					line_xd[1] = date;
 				}
-				if (data < line_yd[0]) {
-					line_yd[0] = data;
-				}
 				if (data > line_yd[1]) {
 					line_yd[1] = data;
 				}
@@ -159,7 +157,8 @@ class LineChart {
 			this.linedata.push(country);
 		}
 		this.line_x.domain(line_xd);
-		this.line_y.domain(line_yd).nice();
+		this.line_y.domain(line_yd);
+		this.line_y.nice();
 
 		dispdata.confirmed_now = this.raw.cdr[0];
 		dispdata.deaths_now = this.raw.cdr[1];
@@ -186,6 +185,16 @@ class LineChart {
 			.attr("class", "line")
 			.style("stroke", this.line_path_stroke)
 			.attr("d", this.line_path_d);
+
+		this.line.append("text")			// 国名
+			.attr("class", "line")
+			.attr("font-size", "12px")
+			.attr("x", d => this.line_x(d.values[d.values.length - 1].date) - 30)
+			.attr("y", d => this.line_y(d.values[d.values.length - 1].data))
+			.attr("fill", "black")
+			.style("stroke", "black")
+			.style("stroke-width", "1px")
+			.text(d => d.name);
 
 		this.svg.append("g")				// 全体x目盛軸
 			.attr("class", "x axis")
