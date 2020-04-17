@@ -51,7 +51,10 @@
 			<div class="collapse navbar-collapse" id="navbarText">
 				<ul class="navbar-nav mr-auto">
 					<li class="nav-item">
-						<a class="navbar-brand nav-link" href="/chart/line.html" title="折れ線">折れ線</a>
+						<a class="navbar-brand nav-link active" href="/" title="Treemap">Treemap</a>
+					</li>
+					<li class="nav-item">
+						<a class="navbar-brand nav-link" href="/chart/line.html" title="Line">Line</a>
 					</li>
 				</ul>
 			</div>
@@ -63,17 +66,24 @@
 					<p class="lead">COVID-19の変動を記録していくサイトです。</p>
 					<hr>
 					<h2>現在</h2>
-					<p>
-						<span id="last-data" v-cloak>
+					<span id="last-data" class="row" v-cloak>
+						<div class="col-md-2 align-self-start">
+							<span>感染数</span>
 							<span class="confirmed">{{ confirmed_now }}</span>
+						</div>
+						<div class="col-md-2 align-self-start">
+							<span>死者数</span>
 							<span class="deaths">{{ deaths_now }}</span>
+						</div>
+						<div class="col-md-2 align-self-start">
+							<span>回復数</span>
 							<span class="recovered">{{ recovered_now }}</span>
-						</span>
-					</p>
+						</div>
+					</span>
 					<hr>
 					<div class="row">
 						<div class="col-4 align-self-start">
-							<h2>国の割合</h2>
+							<h2>各国の割合(Treemap)</h2>
 						</div>
 						<div class="col-4 align-self-end"></div>
 						<div class="col-4 align-self-end" v-cloak>

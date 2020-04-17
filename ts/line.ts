@@ -40,6 +40,12 @@ type Display = {
 	recovered_now: number;
 	categorys: Array<{ id: NumberStr, name: string }>;
 	yscales: Array<{ id: YScaleType, name: string }>;
+	countrys: Array<{
+		id: string,
+		name: string,
+		data: number,
+		checked: boolean
+	}>;
 	nowcategory: NumberStr;
 	nowyscale: YScaleType;
 }
@@ -52,8 +58,10 @@ const NumberIndex: { readonly [key in NumberStr]: number } = {
 const svgIDLine = "svgline";
 const lineUrl = "/data/daily_reports/summary.json";
 const timeFormat = d3.timeFormat("%Y/%m/%d");
-const line_xd_default: [Date, Date] = [new Date(2099, 11, 31), new Date(2001, 0, 1)];
-const line_yd_default: [number, number] = [0, 0];
+const line_xd_default: readonly [Date, Date] = [new Date(2099, 11, 31), new Date(2001, 0, 1)];
+const line_yd_default: readonly [number, number] = [0, 0];
+const base64encode = (str: string): string => window.btoa(unescape(encodeURIComponent(str)));
+const base64decode = (str: string): string => decodeURIComponent(escape(window.atob(str)));
 
 class LineChart {
 	private readonly margin: Box = { top: 10, right: 10, bottom: 20, left: 60 };
@@ -72,17 +80,18 @@ class LineChart {
 
 	private svg: d3.Selection<SVGSVGElement, unknown, HTMLElement, unknown>;
 	private svgid: string;
-	private linedata?: Array<Context>;
+	private linedata: Array<Context>;
 	private raw?: WorldSummary;
 	private target: NumberStr;
 
 	constructor(svgid: string) {
 		this.svgid = svgid;
 		const div = document.getElementById(this.svgid);
-		this.width = div?.offsetWidth ?? 1560;
+		this.width = div?.offsetWidth ?? 8000;
 		this.width = this.width - this.margin.left - this.margin.right;
 		this.height = 720 - this.margin.top - this.margin.bottom;
 		this.target = "confirmed";
+		this.linedata = [];
 
 		this.svg = d3.select("#" + this.svgid).append("svg");
 		this.svg
@@ -123,6 +132,9 @@ class LineChart {
 	public clear(): void {
 		this.svg.selectAll("g").remove();
 	}
+	public getLineData(): Readonly<Array<Context>> {
+		return this.linedata.concat();
+	}
 	public changeData(target: NumberStr): void {
 		if (!this.raw) {
 			return;
@@ -136,8 +148,29 @@ class LineChart {
 		const line_xd = line_xd_default.concat();
 		const line_yd = this.line_y.domain();
 		line_yd[1] = line_yd_default[1];
+
+		const visibleCountry: {
+			[key in string]: {
+				visible: boolean,
+				index: number
+			}
+		} = {};
+		let vindex = 0;
+		for (const checkbox of dispdata.countrys) {
+			if (checkbox.checked) {
+				visibleCountry[checkbox.name] = {
+					visible: true,
+					index: vindex
+				};
+			}
+			vindex++;
+		}
+
 		for (const key in countrys) {
 			if (!countrys.hasOwnProperty(key)) {
+				continue;
+			}
+			if (!(visibleCountry[key]) || visibleCountry[key].visible === false) {
 				continue;
 			}
 			const country: Context = {
@@ -164,6 +197,7 @@ class LineChart {
 				});
 			}
 			this.linedata.push(country);
+			dispdata.countrys[visibleCountry[key].index].data = country.values.length > 0 ? country.values[country.values.length - 1].data : 0;
 		}
 		this.line_x.domain(line_xd);
 		this.line_y.domain(line_yd);
@@ -175,7 +209,18 @@ class LineChart {
 	}
 	public addData(raw: WorldSummary): void {
 		this.raw = raw;
-		this.changeData(this.target);
+		dispdata.countrys = [];
+		for (const key in raw.countrys) {
+			if (!raw.countrys.hasOwnProperty(key)) {
+				continue;
+			}
+			dispdata.countrys.push({
+				id: base64encode(key), // カンマとかスペースとかを適当な文字にする
+				name: key,
+				data: 0,
+				checked: true
+			});
+		}
 	}
 	public resetYScale(scale: YScaleType) {
 		const line_yd = this.line_y.domain();
@@ -185,7 +230,7 @@ class LineChart {
 				line_yd[0] = 0;
 				break;
 			case "Log":
-				this.line_y = d3.scaleLog();
+				this.line_y = d3.scaleLog().clamp(true);
 				line_yd[0] = 1;
 				break;
 			default:
@@ -260,13 +305,16 @@ class Client {
 		};
 		httpget(lineUrl).then(value => {
 			this.line.addData(value);
-			this.line.draw();
+			this.changeCategory("confirmed");
 		}).catch(error => {
 			console.error(error);
 		});
 	}
 	public dispose(): void {
 		this.line?.dispose();
+	}
+	public getLineData(): Readonly<Array<Context>> {
+		return this.line.getLineData();
 	}
 	public changeCategory(cate: NumberStr): void {
 		this.line.clear();
@@ -276,6 +324,7 @@ class Client {
 	public changeYScale(scale: YScaleType): void {
 		this.line.clear();
 		this.line.resetYScale(scale);
+		this.line.changeData(dispdata.nowcategory);
 		this.line.draw();
 	}
 	public static get(url: string, func: (xhr: XMLHttpRequest) => void, err: (txt: string) => void) {
@@ -316,6 +365,7 @@ const dispdata: Display = {
 		{ id: "Liner", name: "Y軸線形" },
 		{ id: "Log", name: "Y軸対数" },
 	],
+	countrys: [],
 	nowcategory: "confirmed",
 	nowyscale: "Liner"
 };
@@ -328,6 +378,40 @@ const vm = new Vue({
 		},
 		yscaleChange: () => {
 			cli.changeYScale(dispdata.nowyscale);
+		},
+		countryChange: () => {
+			cli.changeCategory(dispdata.nowcategory);
+		},
+		countryCheckAllClick: () => {
+			for (const country of dispdata.countrys) {
+				country.checked = true;
+			}
+			cli.changeCategory(dispdata.nowcategory);
+		},
+		countryUncheckAllClick: () => {
+			for (const country of dispdata.countrys) {
+				country.checked = false;
+			}
+			cli.changeCategory(dispdata.nowcategory);
+		},
+		countryCheckBest10Click: () => {
+			const indexmap: { [key in string]: number } = {};
+			let index = 0;
+			for (const country of dispdata.countrys) {
+				country.checked = false;
+				indexmap[country.name] = index;
+				index++;
+			}
+			const datalist = dispdata.countrys.concat();
+			datalist.sort((a, b) => {
+				return b.data - a.data;
+			});
+			const len = Math.min(datalist.length, 10);
+			for (let i = 0; i < len; i++) {
+				const index = indexmap[datalist[i].name];
+				dispdata.countrys[index].checked = true;
+			}
+			cli.changeCategory(dispdata.nowcategory);
 		}
 	}
 });

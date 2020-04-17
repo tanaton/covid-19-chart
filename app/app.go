@@ -674,12 +674,55 @@ func headerToSubject(cell string) string {
 
 func convertNotation(country string) string {
 	switch country {
-	case "Mainland China":
+	case "Mainland China", "Hong Kong SAR", "Hong Kong", "Macau", "Macao SAR": // 中国
 		return "China"
-	case "UK", "North Ireland":
+	case "Taiwan", "Taipei and environs": // 台湾
+		// https://www.axios.com/johns-hopkins-coronavirus-map-taiwan-china-5c461906-4f1c-42e7-b78e-a4b43f4520ab.html
+		return "Taiwan*"
+	case "UK", "North Ireland", "Cayman Islands", "Channel Islands", "Gibraltar", "Jersey", "Guernsey": // イギリス、チャンネル諸島はイギリスではない？？？
 		return "United Kingdom"
+	case "Republic of Ireland": // アイルランド
+		return "Ireland"
+	case "Puerto Rico", "Guam": // アメリカ
+		return "US"
 	case "Ivory Coast": // コートジボワール
 		return "Cote d'Ivoire"
+	case "Guadeloupe", "Reunion", "Martinique", "Mayotte", "French Guiana", "Saint Barthelemy": // フランスの海外県
+		return "France"
+	case "Cruise ship", "Cruise Ship": // 船
+		return "Others"
+	case "Iran (Islamic Republic of)": // イラン
+		return "Iran"
+	case "Republic of Korea", "South Korea": // 韓国
+		return "Korea, South"
+	case "Aruba", "Curacao": // オランダ
+		return "Netherlands"
+	case "Bahamas, The", "The Bahamas": // バハマ
+		return "Bahamas"
+	case "Palestine", "occupied Palestinian territory": // パレスチナ
+		return "State of Palestine"
+	case "Republic of the Congo", "the Congo", "Congo (Brazzaville)", "Congo (Kinshasa)": // コンゴ
+		return "Congo"
+	case "Republic of Moldova": // モルドバ
+		return "Moldova"
+	case "Saint Martin", "St. Martin": // セント・マーチン島（北側はフランスで南側はオランダ？？？）
+		return "St. Martin" // どっちか分からん
+	case "Vatican City": // バチカン市国（特に表記揺れてない）
+		return "Vatican City"
+	case "Czech Republic": // チェコ共和国
+		return "Czechia"
+	case "Viet Nam": // ベトナム
+		return "Vietnam"
+	case "Russian Federation": // ロシア
+		return "Russia"
+	case "Faroe Islands", "Greenland": // デンマーク
+		return "Denmark"
+	case "Gambia, The", "The Gambia": // ガンビア
+		return "Gambia"
+	case "Cape Verde": // カーボベルデ
+		return "Cabo Verde"
+	case "East Timor": // 東ティモール
+		return "Timor-Leste"
 	}
 	return country
 }

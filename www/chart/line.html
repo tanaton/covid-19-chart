@@ -52,7 +52,10 @@
 			<div class="collapse navbar-collapse" id="navbarText">
 				<ul class="navbar-nav mr-auto">
 					<li class="nav-item">
-						<a class="navbar-brand nav-link" href="/" title="世界の様子">世界の様子</a>
+						<a class="navbar-brand nav-link" href="/" title="Treemap">Treemap</a>
+					</li>
+					<li class="nav-item">
+						<a class="navbar-brand nav-link active" href="/chart/line.html" title="Line">Line</a>
 					</li>
 				</ul>
 			</div>
@@ -65,7 +68,7 @@
 					<hr>
 					<div class="row">
 						<div class="col-4 align-self-start">
-							<h2>折れ線で見る様子</h2>
+							<h2>各国の様子(Line)</h2>
 						</div>
 						<div class="col-4 align-self-end" v-cloak>
 							<div v-for="yscale in yscales" class="form-check form-check-inline">
@@ -85,6 +88,24 @@
 						</div>
 					</div>
 					<div id="svgline"></div>
+					<div class="row">
+						<div class="col-md-8 align-self-start" v-cloak>
+							<button type="button" class="btn btn-success"
+								v-on:click="countryCheckAllClick">全部チェックする</button>
+							<button type="button" class="btn btn-danger"
+								v-on:click="countryUncheckAllClick">全部チェックを外す</button>
+							<button type="button" class="btn btn-warning"
+								v-on:click="countryCheckBest10Click">上位10ヶ国のみチェックする</button>
+						</div>
+						<div class="col-md-12" v-cloak>
+							<div v-for="country in countrys" class="form-check form-check-inline">
+								<input class="form-check-input checkbox-country" type="checkbox"
+									v-bind:name="country.id" v-bind:id="country.id" v-on:change="countryChange"
+									v-model="country.checked">
+								<label class="form-check-label" v-bind:for="country.id">{{ country.name }}</label>
+							</div>
+						</div>
+					</div>
 				</main>
 			</div>
 		</div>

@@ -66,7 +66,7 @@ class TreemapChart {
 	constructor(svgid: string) {
 		this.svgid = svgid;
 		const div = document.getElementById(this.svgid);
-		this.width = div?.offsetWidth ?? 1560;
+		this.width = div?.offsetWidth ?? 8000;
 		this.width = this.width - this.margin.left - this.margin.right;
 		this.height = 720 - this.margin.top - this.margin.bottom;
 		this.colorReds = d3.interpolate("lightpink", "red");
