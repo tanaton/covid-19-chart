@@ -225,9 +225,9 @@ class LineChart {
 			.attr("font-size", "12px")
 			.attr("x", d => this.line_x(d.values[d.values.length - 1].date) - 30)
 			.attr("y", d => this.line_y(d.values[d.values.length - 1].data))
-			.attr("fill", "black")
+			.style("fill", "black")
 			.style("stroke", "black")
-			.style("stroke-width", "1px")
+			.style("stroke-width", "0px")
 			.text(d => d.name);
 
 		this.svg.append("g")				// 全体x目盛軸

@@ -33,9 +33,9 @@ type HierarchyDatum = {
 type NumberStr = "confirmed" | "deaths" | "recovered";
 
 type Display = {
-	confirmed_now: number;
-	deaths_now: number;
-	recovered_now: number;
+	confirmed_now: string;
+	deaths_now: string;
+	recovered_now: string;
 	categorys: Array<{ id: NumberStr, name: string }>;
 	nowcategory: NumberStr;
 }
@@ -44,6 +44,10 @@ const svgIDTreemap = "svgtreemap";
 const treemapUrlToday = "/data/daily_reports/today.json";
 const treemapUrl1dayago = "/data/daily_reports/-1day.json";
 const treemapUrl2dayago = "/data/daily_reports/-2day.json";
+
+const formatNumberSuffix = d3.format(",.3s");
+const formatNumberConmma = d3.format(",d");
+const formatNumberFloat = d3.format(".2f");
 
 class TreemapChart {
 	private readonly margin: Box = { top: 10, right: 10, bottom: 20, left: 60 };
@@ -141,9 +145,9 @@ class TreemapChart {
 			this.now.deaths += this.data[0][key].deaths;
 			this.now.recovered += this.data[0][key].recovered;
 		}
-		dispdata.confirmed_now = this.now.confirmed;
-		dispdata.deaths_now = this.now.deaths;
-		dispdata.recovered_now = this.now.recovered;
+		dispdata.confirmed_now = formatNumberConmma(this.now.confirmed);
+		dispdata.deaths_now = formatNumberConmma(this.now.deaths);
+		dispdata.recovered_now = formatNumberConmma(this.now.recovered);
 	}
 	public addData(data: DailyData[]): void {
 		this.data = data;
@@ -162,16 +166,14 @@ class TreemapChart {
 			(nodes);
 		const fontsize = (d: d3.HierarchyRectangularNode<HierarchyDatum>): number => {
 			let s = (((d.x1 - d.x0) + (d.y1 - d.y0)) / 2) / 5;
-			if (s > 100) {
-				s = 100;
+			const max = Math.min(Math.floor((d.y1 - d.y0) / 3), 100);
+			if (s > max) {
+				s = max;
 			} else if (s < 5) {
 				s = 5;
 			}
 			return s;
 		}
-		const numfs = d3.format(",.3s");
-		const numf = d3.format(",d");
-		const numff = d3.format(".2f");
 		const visiblemin = this.now[this.target] / 10000;
 		const percent = (active?: [number, number]): string => {
 			if (!active) {
@@ -181,7 +183,7 @@ class TreemapChart {
 				return "";
 			}
 			const p = 100 - ((active[1] / active[0]) * 100);
-			return p > 0 ? `▼${numff(p)}%` : `▲${numff(p)}%`;
+			return p > 0 ? `▼${formatNumberFloat(p)}%` : `▲${formatNumberFloat(p)}%`;
 		}
 		const textdata = (d: d3.HierarchyRectangularNode<HierarchyDatum>): Array<{ name: string, size: number }> => {
 			if (d.data.value < visiblemin) {
@@ -192,7 +194,7 @@ class TreemapChart {
 				name: d.data.name,
 				size: size
 			}, {
-				name: numfs(d.data.value),
+				name: formatNumberSuffix(d.data.value),
 				size: size
 			}];
 			const per = percent(d.data.active);
@@ -238,7 +240,7 @@ class TreemapChart {
 			.text(d => d.name);
 
 		leaf.append("title")
-			.text(d => `${d.data.name}\n${numf(d.data.value)}`);
+			.text(d => `${d.data.name}\n${formatNumberConmma(d.data.value)}`);
 	}
 }
 
@@ -302,9 +304,9 @@ class Client {
 }
 
 const dispdata: Display = {
-	confirmed_now: 0,
-	deaths_now: 0,
-	recovered_now: 0,
+	confirmed_now: "",
+	deaths_now: "",
+	recovered_now: "",
 	categorys: [
 		{ id: "confirmed", name: "感染数" },
 		{ id: "deaths", name: "死亡数" },
