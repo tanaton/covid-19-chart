@@ -20,3 +20,4 @@ log
 
 *.swp
 *.map
+package-lock.json

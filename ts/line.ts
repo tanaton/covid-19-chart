@@ -1,5 +1,6 @@
 import * as d3 from 'd3';
 import Vue from 'vue';
+import VueSlider from 'vue-slider-component';
 
 type Box = {
 	readonly top: number;
@@ -8,17 +9,19 @@ type Box = {
 	readonly left: number;
 }
 
+type CDR = [number, number, number];
+
 type DatasetSimple = {
 	date: string,
-	cdr: [number, number, number]
+	cdr: CDR
 }
 type CountrySummary = {
 	daily: DatasetSimple[],
-	cdr: [number, number, number]
+	cdr: CDR
 }
 type WorldSummary = {
 	countrys: { [key in string]: CountrySummary },
-	cdr: [number, number, number]
+	cdr: CDR
 }
 
 type ChartPathData = {
@@ -43,9 +46,15 @@ type Display = {
 	countrys: Array<{
 		id: string,
 		name: string,
-		data: number,
+		data: CDR,
 		checked: boolean
 	}>;
+	slider: {
+		xaxis: {
+			value: string[];
+			data: string[];
+		};
+	};
 	nowcategory: NumberStr;
 	nowyscale: YScaleType;
 }
@@ -62,6 +71,12 @@ const line_xd_default: readonly [Date, Date] = [new Date(2099, 11, 31), new Date
 const line_yd_default: readonly [number, number] = [0, 0];
 const base64encode = (str: string): string => window.btoa(unescape(encodeURIComponent(str)));
 const base64decode = (str: string): string => decodeURIComponent(escape(window.atob(str)));
+const atoi = (str: string): number => parseInt(str, 10);
+const strToDate = (str: string): Date => {
+	const datearray = str.split("/").map<number>(atoi);
+	// 月は-1しないと期待通りに動作しない
+	return new Date(datearray[0], datearray[1] - 1, datearray[2]);
+}
 
 class LineChart {
 	private readonly margin: Box = { top: 10, right: 10, bottom: 20, left: 60 };
@@ -144,9 +159,11 @@ class LineChart {
 
 		const index = NumberIndex[target];
 		const countrys = this.raw.countrys;
-		const atoi = (str: string): number => parseInt(str, 10);
-		const line_xd = line_xd_default.concat();
 		const line_yd = this.line_y.domain();
+		const line_xd = [
+			strToDate(dispdata.slider.xaxis.value[0]),
+			strToDate(dispdata.slider.xaxis.value[1])
+		];
 		line_yd[1] = line_yd_default[1];
 
 		const visibleCountry: {
@@ -178,16 +195,11 @@ class LineChart {
 				values: []
 			};
 			for (const it of countrys[key].daily) {
-				const datearray = it.date.split("/").map<number>(atoi);
-				// 月は-1しないと期待通りに動作しない
-				const date = new Date(datearray[0], datearray[1] - 1, datearray[2]);
+				const date = strToDate(it.date);
+				if (date.getTime() < line_xd[0].getTime() || date.getTime() > line_xd[1].getTime()) {
+					continue;
+				}
 				const data = it.cdr[index];
-				if (date.getTime() < line_xd[0].getTime()) {
-					line_xd[0] = date;
-				}
-				if (date.getTime() > line_xd[1].getTime()) {
-					line_xd[1] = date;
-				}
 				if (data > line_yd[1]) {
 					line_yd[1] = data;
 				}
@@ -196,8 +208,9 @@ class LineChart {
 					data: data,
 				});
 			}
-			this.linedata.push(country);
-			dispdata.countrys[visibleCountry[key].index].data = country.values.length > 0 ? country.values[country.values.length - 1].data : 0;
+			if (country.values.length > 0) {
+				this.linedata.push(country);
+			}
 		}
 		this.line_x.domain(line_xd);
 		this.line_y.domain(line_yd);
@@ -210,16 +223,37 @@ class LineChart {
 	public addData(raw: WorldSummary): void {
 		this.raw = raw;
 		dispdata.countrys = [];
+		const line_xd = line_xd_default.concat();
+
 		for (const key in raw.countrys) {
 			if (!raw.countrys.hasOwnProperty(key)) {
 				continue;
 			}
-			dispdata.countrys.push({
-				id: base64encode(key), // カンマとかスペースとかを適当な文字にする
-				name: key,
-				data: 0,
-				checked: true
-			});
+			const daily = raw.countrys[key].daily;
+			if (daily && daily.length > 0) {
+				const start = strToDate(daily[0].date);
+				const last = daily[daily.length - 1];
+				const end = strToDate(last.date);
+				if (start.getTime() < line_xd[0].getTime()) {
+					line_xd[0] = start;
+				}
+				if (end.getTime() > line_xd[1].getTime()) {
+					line_xd[1] = end;
+				}
+				const cdr = last.cdr;
+				dispdata.countrys.push({
+					id: base64encode(key), // カンマとかスペースとかを適当な文字にする
+					name: key,
+					data: [cdr[0], cdr[1], cdr[2]],
+					checked: true
+				});
+			}
+		}
+		dispdata.slider.xaxis.value = [timeFormat(line_xd[0]), timeFormat(line_xd[1])];
+		let date: Date = new Date(line_xd[0].getTime());
+		while (date <= line_xd[1]) {
+			dispdata.slider.xaxis.data.push(timeFormat(date));
+			date = new Date(date.getTime() + 60 * 60 * 24 * 1000);
 		}
 	}
 	public resetYScale(scale: YScaleType) {
@@ -366,12 +400,21 @@ const dispdata: Display = {
 		{ id: "Log", name: "Y軸対数" },
 	],
 	countrys: [],
+	slider: {
+		xaxis: {
+			value: [],
+			data: []
+		}
+	},
 	nowcategory: "confirmed",
 	nowyscale: "Liner"
 };
 const vm = new Vue({
 	el: "#container",
 	data: dispdata,
+	components: {
+		'VueSlider': VueSlider,
+	},
 	methods: {
 		categoryChange: () => {
 			cli.changeCategory(dispdata.nowcategory);
@@ -396,21 +439,23 @@ const vm = new Vue({
 		},
 		countryCheckBest10Click: () => {
 			const indexmap: { [key in string]: number } = {};
-			let index = 0;
+			let cindex = 0;
 			for (const country of dispdata.countrys) {
 				country.checked = false;
-				indexmap[country.name] = index;
-				index++;
+				indexmap[country.name] = cindex;
+				cindex++;
 			}
 			const datalist = dispdata.countrys.concat();
-			datalist.sort((a, b) => {
-				return b.data - a.data;
-			});
+			const target = NumberIndex[dispdata.nowcategory];
+			datalist.sort((a, b) => b.data[target] - a.data[target]);
 			const len = Math.min(datalist.length, 10);
 			for (let i = 0; i < len; i++) {
 				const index = indexmap[datalist[i].name];
 				dispdata.countrys[index].checked = true;
 			}
+			cli.changeCategory(dispdata.nowcategory);
+		},
+		sliderChange: () => {
 			cli.changeCategory(dispdata.nowcategory);
 		}
 	}

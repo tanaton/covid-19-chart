@@ -422,6 +422,10 @@ func updateGit(ctx context.Context, p string) error {
 	if err != nil {
 		return err
 	}
+	err = w.Checkout(&git.CheckoutOptions{Force: true})
+	if err != nil {
+		return err
+	}
 	err = w.PullContext(ctx, &git.PullOptions{RemoteName: "origin"})
 	if err != nil {
 		return err

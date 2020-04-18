@@ -40,6 +40,7 @@
 			display: none;
 		}
 	</style>
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vue-slider-component@latest/theme/default.css">
 </head>
 
 <body class="bg-light text-dark">
@@ -89,7 +90,7 @@
 					</div>
 					<div id="svgline"></div>
 					<div class="row">
-						<div class="col-md-8 align-self-start" v-cloak>
+						<div class="col-md-6 align-self-start" v-cloak>
 							<button type="button" class="btn btn-success"
 								v-on:click="countryCheckAllClick">全部チェックする</button>
 							<button type="button" class="btn btn-danger"
@@ -97,6 +98,17 @@
 							<button type="button" class="btn btn-warning"
 								v-on:click="countryCheckBest10Click">上位10ヶ国のみチェックする</button>
 						</div>
+						<div class="col-md-6 align-self-start" v-cloak>
+							<template>
+								<div>
+									範囲指定：
+									<vue-slider v-model="slider.xaxis.value" :data="slider.xaxis.data"
+										v-on:change="sliderChange"></vue-slider>
+								</div>
+							</template>
+						</div>
+					</div>
+					<div class="row">
 						<div class="col-md-12" v-cloak>
 							<div v-for="country in countrys" class="form-check form-check-inline">
 								<input class="form-check-input checkbox-country" type="checkbox"
