@@ -40,7 +40,7 @@ const (
 	AccessLogPath      = "./log"
 	NowJSONDefaultName = "2020-01-22.json"
 
-	GitTimeoutDuration  = 1 * time.Minute
+	GitTimeoutDuration  = 3 * time.Minute
 	UpdateCycleDuration = 1 * time.Hour
 )
 
