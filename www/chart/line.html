@@ -115,67 +115,68 @@
 				</ul>
 			</div>
 		</nav>
-		<div class="container-fluid">
+		<main class="container col-md-12" role="main">
 			<div class="row">
-				<main class="container col-md-12" role="main">
-					<h1>世界の様子</h1>
-					<p class="lead">COVID-19の変動を記録していくサイトです。</p>
-					<hr>
-					<div class="row">
-						<div class="col-4 align-self-start">
-							<h2>各国の様子(Line)</h2>
-						</div>
-						<div class="col-4 align-self-end" v-cloak>
-							<div v-for="yscale in yscales" class="form-check form-check-inline">
-								<input class="form-check-input" type="radio" v-bind:name="yscale.id"
-									v-bind:id="yscale.id" v-model="nowyscale" v-bind:value="yscale.id"
-									v-on:change="yscaleChange">
-								<label class="form-check-label" v-bind:for="yscale.id">{{ yscale.name }}</label>
-							</div>
-						</div>
-						<div class="col-4 align-self-end" v-cloak>
-							<div v-for="category in categorys" class="form-check form-check-inline">
-								<input class="form-check-input" type="radio" v-bind:name="category.id"
-									v-bind:id="category.id" v-model="nowcategory" v-bind:value="category.id"
-									v-on:change="categoryChange">
-								<label class="form-check-label" v-bind:for="category.id">{{ category.name }}</label>
-							</div>
-						</div>
-					</div>
-					<div id="svgline"></div>
-					<div class="row">
-						<div class="col-md-6 align-self-start" v-cloak>
-							<button type="button" class="btn btn-success"
-								v-on:click="countryCheckAllClick">全部チェックする</button>
-							<button type="button" class="btn btn-danger"
-								v-on:click="countryUncheckAllClick">全部チェックを外す</button>
-							<button type="button" class="btn btn-warning"
-								v-on:click="countryCheckBest10Click">上位10ヶ国のみチェックする</button>
-						</div>
-						<div class="col-md-6 align-self-start" v-cloak>
-							<template>
-								<div>
-									範囲指定：{{ slider.xaxis.value[0] }}～{{ slider.xaxis.value[1] }}
-									<vue-slider v-model="slider.xaxis.value" :data="slider.xaxis.data"
-										v-on:change="sliderChange"></vue-slider>
-								</div>
-							</template>
-						</div>
-					</div>
-					<div class="row">
-						<div class="col-md-12" v-cloak>
-							国選択：
-							<div v-for="country in countrys" class="form-check form-check-inline">
-								<input class="form-check-input checkbox-country" type="checkbox"
-									v-bind:name="country.id" v-bind:id="country.id" v-on:change="countryChange"
-									v-model="country.checked">
-								<label class="form-check-label" v-bind:for="country.id">{{ country.name }}</label>
-							</div>
-						</div>
-					</div>
-				</main>
+				<div class="col-12 align-self-start">
+					<h1>各国の様子(Line)</h1>
+				</div>
 			</div>
-		</div>
+			<div class="row">
+				<div class="col-6 align-self-end" v-cloak>
+					Y軸目盛り：
+					<div v-for="yscale in yscales" class="form-check form-check-inline">
+						<input class="form-check-input" type="radio" v-bind:name="yscale.id" v-bind:id="yscale.id"
+							v-model="nowyscale" v-bind:value="yscale.id" v-on:change="yscaleChange">
+						<label class="form-check-label" v-bind:for="yscale.id">{{ yscale.name }}</label>
+					</div>
+				</div>
+				<div class="col-6 align-self-end" v-cloak>
+					表示情報：
+					<div v-for="category in categorys" class="form-check form-check-inline">
+						<input class="form-check-input" type="radio" v-bind:name="category.id" v-bind:id="category.id"
+							v-model="nowcategory" v-bind:value="category.id" v-on:change="categoryChange">
+						<label class="form-check-label" v-bind:for="category.id">{{ category.name }}</label>
+					</div>
+				</div>
+			</div>
+			<div id="svgline"></div>
+			<div class="row">
+				<div class="col-md-6 align-self-start" v-cloak>
+					<button type="button" class="btn btn-success" v-on:click="countryCheckAllClick">全部チェックする</button>
+					<button type="button" class="btn btn-danger" v-on:click="countryUncheckAllClick">全部チェックを外す</button>
+					<button type="button" class="btn btn-warning"
+						v-on:click="countryCheckBest10Click">上位10ヶ国のみチェックする</button>
+				</div>
+				<div class="col-md-6 align-self-start" v-cloak>
+					<template>
+						<div>
+							範囲指定：{{ slider.xaxis.value[0] }}～{{ slider.xaxis.value[1] }}
+							<vue-slider v-model="slider.xaxis.value" :data="slider.xaxis.data"
+								v-on:change="sliderChange"></vue-slider>
+						</div>
+					</template>
+				</div>
+			</div>
+			<div class="row">
+				<div class="col-md-12" v-cloak>
+					国選択：
+					<div v-for="country in countrys" class="form-check form-check-inline">
+						<input class="form-check-input checkbox-country" type="checkbox" v-bind:name="country.id"
+							v-bind:id="country.id" v-on:change="countryChange" v-model="country.checked">
+						<label class="form-check-label" v-bind:for="country.id">{{ country.name }}</label>
+					</div>
+				</div>
+			</div>
+		</main>
+		<footer class="my-5 pt-5 text-muted text-center text-small">
+			<ul class="list-inline">
+				<li class="list-inline-item active"><a href="/about.html">当サイトについて</a></li>
+				<li class="list-inline-item">データ元：<a href="https://github.com/CSSEGISandData/COVID-19">COVID-19
+						Data Repository by Johns Hopkins CSSE</a></li>
+				<li class="list-inline-item">ソースコード：<a
+						href="https://github.com/tanaton/covid-19-chart">covid-19-chart</a></li>
+			</ul>
+		</footer>
 	</div>
 	<script src="/js/lib/jquery-3.4.1.min.js"></script>
 	<script src="/js/lib/bootstrap.min.js"></script>

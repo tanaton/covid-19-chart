@@ -121,74 +121,82 @@
 				</ul>
 			</div>
 		</nav>
-		<div class="container-fluid">
+		<main class="container col-md-12" role="main">
 			<div class="row">
-				<main class="container col-md-12" role="main">
-					<h1>世界の様子</h1>
-					<p class="lead">COVID-19の変動を記録していくサイトです。</p>
-					<hr>
-					<h2 v-cloak>{{ nowcountrystr }}の現在</h2>
-					<span id="last-data" class="row" v-cloak>
-						<div class="col-md-2 align-self-start">
-							<span>感染数</span>
-							<span class="confirmed">{{ confirmed_now }}</span>
-						</div>
-						<div class="col-md-2 align-self-start">
-							<span>死者数</span>
-							<span class="deaths">{{ deaths_now }}</span>
-						</div>
-						<div class="col-md-2 align-self-start">
-							<span>回復数</span>
-							<span class="recovered">{{ recovered_now }}</span>
-						</div>
-					</span>
-					<hr>
-					<div class="row">
-						<div class="col-4 align-self-start" v-cloak>
-							<h2>{{ nowcountrystr }}の増加数(VerticalBar)</h2>
-						</div>
-						<div class="col-4 align-self-end" v-cloak>
-							<div v-for="yscale in yscales" class="form-check form-check-inline">
-								<input class="form-check-input" type="radio" v-bind:name="yscale.id"
-									v-bind:id="yscale.id" v-model="nowyscale" v-bind:value="yscale.id"
-									v-on:change="yscaleChange">
-								<label class="form-check-label" v-bind:for="yscale.id">{{ yscale.name }}</label>
-							</div>
-						</div>
-						<div class="col-4 align-self-end" v-cloak>
-							<div v-for="category in categorys" class="form-check form-check-inline">
-								<input class="form-check-input" type="radio" v-bind:name="category.id"
-									v-bind:id="category.id" v-model="nowcategory" v-bind:value="category.id"
-									v-on:change="categoryChange">
-								<label class="form-check-label" v-bind:for="category.id">{{ category.name }}</label>
-							</div>
-						</div>
-					</div>
-					<div id="svgvbar"></div>
-					<div class="row">
-						<div class="col-md-8 align-self-start" v-cloak>
-							<template>
-								<div>
-									範囲指定：{{ slider.xaxis.value[0] }}～{{ slider.xaxis.value[1] }}
-									<vue-slider v-model="slider.xaxis.value" :data="slider.xaxis.data"
-										v-on:change="sliderChange"></vue-slider>
-								</div>
-							</template>
-						</div>
-					</div>
-					<div class="row">
-						<div class="col-md-12" v-cloak>
-							国選択：
-							<div v-for="country in countrys" class="form-check form-check-inline">
-								<input class="form-check-input radio-country" type="radio" :value="country.id"
-									v-bind:id="country.id" v-model="nowcountry" v-on:change="countryChange">
-								<label class="form-check-label" v-bind:for="country.id">{{ country.name }}</label>
-							</div>
-						</div>
-					</div>
-				</main>
+				<div class="col-12 align-self-start">
+					<h1 v-cloak>{{ nowcountrystr }}の現在</h1>
+				</div>
 			</div>
-		</div>
+			<div id="last-data" class="row" v-cloak>
+				<div class="col-md-3 align-self-start">
+					<span>感染数</span>
+					<span class="confirmed">{{ confirmed_now }}</span>
+				</div>
+				<div class="col-md-3 align-self-start">
+					<span>死者数</span>
+					<span class="deaths">{{ deaths_now }}</span>
+				</div>
+				<div class="col-md-3 align-self-start">
+					<span>回復数</span>
+					<span class="recovered">{{ recovered_now }}</span>
+				</div>
+			</div>
+			<hr>
+			<div class="row">
+				<div class="col-12 align-self-start" v-cloak>
+					<h2>{{ nowcountrystr }}の増加数(VerticalBar)</h2>
+				</div>
+			</div>
+			<div class="row">
+				<div class="col-6 align-self-end" v-cloak>
+					Y軸目盛り：
+					<div v-for="yscale in yscales" class="form-check form-check-inline">
+						<input class="form-check-input" type="radio" v-bind:name="yscale.id" v-bind:id="yscale.id"
+							v-model="nowyscale" v-bind:value="yscale.id" v-on:change="yscaleChange">
+						<label class="form-check-label" v-bind:for="yscale.id">{{ yscale.name }}</label>
+					</div>
+				</div>
+				<div class="col-6 align-self-end" v-cloak>
+					表示情報：
+					<div v-for="category in categorys" class="form-check form-check-inline">
+						<input class="form-check-input" type="radio" v-bind:name="category.id" v-bind:id="category.id"
+							v-model="nowcategory" v-bind:value="category.id" v-on:change="categoryChange">
+						<label class="form-check-label" v-bind:for="category.id">{{ category.name }}</label>
+					</div>
+				</div>
+			</div>
+			<div id="svgvbar"></div>
+			<div class="row">
+				<div class="col-md-8 align-self-start" v-cloak>
+					<template>
+						<div>
+							範囲指定：{{ slider.xaxis.value[0] }}～{{ slider.xaxis.value[1] }}
+							<vue-slider v-model="slider.xaxis.value" :data="slider.xaxis.data"
+								v-on:change="sliderChange"></vue-slider>
+						</div>
+					</template>
+				</div>
+			</div>
+			<div class="row">
+				<div class="col-md-12" v-cloak>
+					国選択：
+					<div v-for="country in countrys" class="form-check form-check-inline">
+						<input class="form-check-input radio-country" type="radio" :value="country.id"
+							v-bind:id="country.id" v-model="nowcountry" v-on:change="countryChange">
+						<label class="form-check-label" v-bind:for="country.id">{{ country.name }}</label>
+					</div>
+				</div>
+			</div>
+		</main>
+		<footer class="my-5 pt-5 text-muted text-center text-small">
+			<ul class="list-inline">
+				<li class="list-inline-item active"><a href="/about.html">当サイトについて</a></li>
+				<li class="list-inline-item">データ元：<a href="https://github.com/CSSEGISandData/COVID-19">COVID-19
+						Data Repository by Johns Hopkins CSSE</a></li>
+				<li class="list-inline-item">ソースコード：<a
+						href="https://github.com/tanaton/covid-19-chart">covid-19-chart</a></li>
+			</ul>
+		</footer>
 	</div>
 	<script src="/js/lib/jquery-3.4.1.min.js"></script>
 	<script src="/js/lib/bootstrap.min.js"></script>
