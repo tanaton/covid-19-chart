@@ -29,15 +29,13 @@ type ChartPathData = {
 	data: number;
 }
 
-type Context = {
-	readonly name: string;
-	values: ChartPathData[];
-}
-
 type NumberStr = "confirmed" | "deaths" | "recovered";
 type YScaleType = "Liner" | "Log";
 
 type Display = {
+	confirmed_now: string;
+	deaths_now: string;
+	recovered_now: string;
 	categorys: Array<{ id: NumberStr, name: string }>;
 	yscales: Array<{ id: YScaleType, name: string }>;
 	countrys: Array<{
@@ -54,6 +52,7 @@ type Display = {
 	};
 	nowcategory: NumberStr;
 	nowyscale: YScaleType;
+	nowcountry: string;
 }
 
 const NumberIndex: { readonly [key in NumberStr]: number } = {
@@ -61,12 +60,12 @@ const NumberIndex: { readonly [key in NumberStr]: number } = {
 	deaths: 1,
 	recovered: 2,
 };
-const svgIDLine = "svgline";
-const lineUrl = "/data/daily_reports/summary.json";
+const svgIDvbar = "svgvbar";
+const vbarUrl = "/data/daily_reports/summary.json";
 const timeFormat = d3.timeFormat("%Y/%m/%d");
 const formatNumberConmma = d3.format(",d");
-const line_xd_default: readonly [Date, Date] = [new Date(2099, 11, 31), new Date(2001, 0, 1)];
-const line_yd_default: readonly [number, number] = [0, 0];
+const vbar_xd_default: readonly [Date, Date] = [new Date(2099, 11, 31), new Date(2001, 0, 1)];
+const vbar_yd_default: readonly [number, number] = [0, 0];
 const base64encode = (str: string): string => window.btoa(unescape(encodeURIComponent(str)));
 const base64decode = (str: string): string => decodeURIComponent(escape(window.atob(str)));
 const atoi = (str: string): number => parseInt(str, 10);
@@ -76,24 +75,23 @@ const strToDate = (str: string): Date => {
 	return new Date(datearray[0], datearray[1] - 1, datearray[2]);
 }
 
-class LineChart {
+class VerticalBarChart {
 	private readonly margin: Box = { top: 10, right: 10, bottom: 20, left: 60 };
 	private width: number;
 	private height: number;
 
-	private line?: d3.Selection<SVGGElement, Context, SVGSVGElement, unknown>;
-	private line_x: d3.ScaleTime<number, number>;
-	private line_y: d3.ScaleLinear<number, number> | d3.ScaleLogarithmic<number, number>;
-	private line_xAxis: d3.Axis<Date>;
-	private line_yAxis: d3.Axis<number>;
-	private line_line: d3.Line<ChartPathData>;
-	private line_path_d: (d: Context) => string | null;
-	private line_color: d3.ScaleOrdinal<string, string>;
-	private line_path_stroke: (d: { name: string }) => string;
+	private vbar?: d3.Selection<SVGGElement, ChartPathData, SVGSVGElement, unknown>;
+	private vbar_x: d3.ScaleTime<number, number>;
+	private vbar_y: d3.ScaleLinear<number, number> | d3.ScaleLogarithmic<number, number>;
+	private vbar_xAxis: d3.Axis<Date>;
+	private vbar_yAxis: d3.Axis<number>;
+	private vbar_color: d3.ScaleOrdinal<string, string>;
+	private vbar_path_stroke: (d: { name: string }) => string;
 
 	private svg: d3.Selection<SVGSVGElement, unknown, HTMLElement, unknown>;
 	private svgid: string;
-	private linedata: Array<Context>;
+	private vbardata: ChartPathData[];
+	private barwidth: number;
 	private raw?: WorldSummary;
 	private target: NumberStr;
 
@@ -104,38 +102,32 @@ class LineChart {
 		this.width = this.width - this.margin.left - this.margin.right;
 		this.height = 720 - this.margin.top - this.margin.bottom;
 		this.target = "confirmed";
-		this.linedata = [];
+		this.vbardata = [];
+		this.barwidth = 10;
 
 		this.svg = d3.select("#" + this.svgid).append("svg");
 		this.svg
 			.attr("width", this.width + this.margin.left + this.margin.right + 10)
 			.attr("height", this.height + this.margin.top + this.margin.bottom + 10);
 
-		this.line_x = d3.scaleTime()
-			.domain(line_xd_default.concat())
+		this.vbar_x = d3.scaleTime()
+			.domain(vbar_xd_default.concat())
 			.range([0, this.width]);
-		this.line_y = d3.scaleLinear()
-			.domain(line_yd_default.concat())
+		this.vbar_y = d3.scaleLinear()
+			.domain(vbar_yd_default.concat())
 			.range([this.height, 0]);
-		this.line_xAxis = d3.axisBottom<Date>(this.line_x)
+		this.vbar_xAxis = d3.axisBottom<Date>(this.vbar_x)
 			.tickSizeInner(-this.height)
 			.tickFormat(timeFormat)
 			.tickPadding(7)
 			.ticks(5);
-		this.line_yAxis = d3.axisLeft<number>(this.line_y)
+		this.vbar_yAxis = d3.axisLeft<number>(this.vbar_y)
 			.tickSizeInner(-this.width)
 			.tickPadding(7)
 			.ticks(5);
-		this.line_line = d3.line<ChartPathData>()
-			.curve(d3.curveLinear)
-			//.curve(d3.curveMonotoneX)
-			//.curve(d3.curveStepAfter)
-			.x(d => this.line_x(d.date))
-			.y(d => this.line_y(d.data));
-		this.line_path_d = d => this.line_line(d.values);
 
-		this.line_color = d3.scaleOrdinal(d3.schemeCategory10);
-		this.line_path_stroke = d => this.line_color(d.name);
+		this.vbar_color = d3.scaleOrdinal(d3.schemeCategory10);
+		this.vbar_path_stroke = d => this.vbar_color(d.name);
 	}
 	public dispose(): void {
 		const doc = document.getElementById(this.svgid);
@@ -146,79 +138,66 @@ class LineChart {
 	public clear(): void {
 		this.svg.selectAll("g").remove();
 	}
-	public getLineData(): Readonly<Array<Context>> {
-		return this.linedata.concat();
+	public getLineData(): Readonly<ChartPathData[]> {
+		return this.vbardata.concat();
 	}
 	public changeData(target: NumberStr): void {
 		if (!this.raw) {
 			return;
 		}
 		this.target = target;
-		this.linedata = [];
+		this.vbardata = [];
 
 		const index = NumberIndex[target];
 		const countrys = this.raw.countrys;
-		const line_yd = this.line_y.domain();
+		const line_yd = this.vbar_y.domain();
 		const line_xd = [
 			strToDate(dispdata.slider.xaxis.value[0]),
 			strToDate(dispdata.slider.xaxis.value[1])
 		];
-		line_yd[1] = line_yd_default[1];
+		line_yd[1] = vbar_yd_default[1];
 
-		const visibleCountry: {
-			[key in string]: {
-				visible: boolean,
-				index: number
-			}
-		} = {};
-		let vindex = 0;
-		for (const checkbox of dispdata.countrys) {
-			if (checkbox.checked) {
-				visibleCountry[checkbox.name] = {
-					visible: true,
-					index: vindex
-				};
-			}
-			vindex++;
-		}
-
-		for (const key in countrys) {
-			if (!countrys.hasOwnProperty(key)) {
-				continue;
-			}
-			if (!(visibleCountry[key]) || visibleCountry[key].visible === false) {
-				continue;
-			}
-			const country: Context = {
-				name: key,
-				values: []
-			};
+		const key = base64decode(dispdata.nowcountry);
+		if (countrys.hasOwnProperty(key)) {
+			let yesterday = 0;
 			for (const it of countrys[key].daily) {
+				const data = Math.max(it.cdr[index] - yesterday, 0);
+				yesterday = it.cdr[index];
 				const date = strToDate(it.date);
 				if (date.getTime() < line_xd[0].getTime() || date.getTime() > line_xd[1].getTime()) {
 					continue;
 				}
-				const data = it.cdr[index];
 				if (data > line_yd[1]) {
 					line_yd[1] = data;
 				}
-				country.values.push({
+				if (date.getTime() < line_xd[0].getTime()) {
+					line_xd[0] = date;
+				}
+				if (date.getTime() > line_xd[1].getTime()) {
+					line_xd[1] = date;
+				}
+				this.vbardata.push({
 					date: date,
-					data: data,
+					data: Math.max(data, 0)
 				});
 			}
-			if (country.values.length > 0) {
-				this.linedata.push(country);
-			}
+			dispdata.confirmed_now = formatNumberConmma(countrys[key].cdr[0]);
+			dispdata.deaths_now = formatNumberConmma(countrys[key].cdr[1]);
+			dispdata.recovered_now = formatNumberConmma(countrys[key].cdr[2]);
 		}
-		this.line_x.domain(line_xd);
-		this.line_y.domain(line_yd);
-		this.line_y.nice();
+		const len = ((line_xd[1].getTime() - line_xd[0].getTime()) / (3600 * 24 * 1000)) + 1;
+		this.barwidth = Math.floor(this.width / len);
+		this.vbar_x.domain(line_xd);
+		this.vbar_y.domain(line_yd);
+		this.vbar_y.nice();
+
+		dispdata.slider.xaxis.value[0] = timeFormat(line_xd[0]);
+		dispdata.slider.xaxis.value[1] = timeFormat(line_xd[1]);
 	}
 	public addData(raw: WorldSummary): void {
 		this.raw = raw;
 		dispdata.countrys = [];
-		const line_xd = line_xd_default.concat();
+		const line_xd = vbar_xd_default.concat();
 
 		for (const key in raw.countrys) {
 			if (!raw.countrys.hasOwnProperty(key)) {
@@ -252,79 +231,71 @@ class LineChart {
 		}
 	}
 	public resetYScale(scale: YScaleType) {
-		const line_yd = this.line_y.domain();
+		const line_yd = this.vbar_y.domain();
 		switch (scale) {
 			case "Liner":
-				this.line_y = d3.scaleLinear();
+				this.vbar_y = d3.scaleLinear();
 				line_yd[0] = 0;
 				break;
 			case "Log":
-				this.line_y = d3.scaleLog().clamp(true);
+				this.vbar_y = d3.scaleLog().clamp(true);
 				line_yd[0] = 1;
 				break;
 			default:
-				this.line_y = d3.scaleLinear();
+				this.vbar_y = d3.scaleLinear();
 				line_yd[0] = 0;
 				break;
 		}
-		this.line_y.range([this.height, 0]);
-		this.line_y.domain(line_yd);
-		this.line_y.nice();
+		this.vbar_y.range([this.height, 0]);
+		this.vbar_y.domain(line_yd);
+		this.vbar_y.nice();
 
-		this.line_yAxis = d3.axisLeft<number>(this.line_y)
+		this.vbar_yAxis = d3.axisLeft<number>(this.vbar_y)
 			.tickSizeInner(-this.width)
 			.tickFormat(formatNumberConmma)
 			.tickPadding(7)
 			.ticks(5);
 	}
 	public draw(): void {
-		if (!this.linedata) {
+		if (!this.vbardata) {
 			// undefinedチェック
 			return;
 		}
 
-		this.line = this.svg.selectAll<SVGGElement, Context>(".line")
-			.data(this.linedata)
+		this.vbar = this.svg.selectAll<SVGGElement, ChartPathData>(".vbar")
+			.data(this.vbardata)
 			.enter()
 			.append("g")
 			.attr("transform", `translate(${this.margin.left},${this.margin.top})`)
-			.attr("class", "line");
+			.attr("class", "vbar");
 
-		this.line.append("path")			// 全体グラフ
-			.attr("class", "line")
-			.style("stroke", this.line_path_stroke)
-			.attr("d", this.line_path_d);
+		this.vbar.append("rect")
+			.style("fill", this.vbar_color(base64decode(dispdata.nowcountry)))
+			.attr("x", d => this.vbar_x(d.date) - (this.barwidth / 2))
+			.attr("y", d => this.vbar_y(d.data))
+			.attr("width", this.barwidth)
+			.attr("height", d => Math.abs(this.vbar_y(0) - this.vbar_y(d.data)));
 
-		this.line.append("text")			// 国名
-			.attr("class", "line")
-			.attr("font-size", "12px")
-			.attr("x", d => {
-				const val = d.values[d.values.length - 1];
-				return this.line_x(val.date) - d.name.length * 5;
-			})
-			.attr("y", d => this.line_y(d.values[d.values.length - 1].data))
-			.style("fill", "black")
-			.style("stroke", "black")
-			.style("stroke-width", "0px")
-			.text(d => d.name);
+		this.vbar.append("title")
+			.text(d => `date:${timeFormat(d.date)}\ndata:${formatNumberConmma(d.data)}`);
 
 		this.svg.append("g")				// 全体x目盛軸
 			.attr("class", "x axis")
 			.attr("transform", `translate(${this.margin.left},${this.height + this.margin.top})`)
-			.call(this.line_xAxis);
+			.call(this.vbar_xAxis);
 
 		this.svg.append("g")				// 全体y目盛軸
 			.attr("class", "y axis")
 			.attr("transform", `translate(${this.margin.left},${this.margin.top})`)
-			.call(this.line_yAxis);
+			.call(this.vbar_yAxis);
 	}
 }
 
 class Client {
-	private line: LineChart;
+	private vbar: VerticalBarChart;
 
 	constructor() {
-		this.line = new LineChart(svgIDLine);
+		this.vbar = new VerticalBarChart(svgIDvbar);
 	}
 	public run(): void {
 		const httpget = (url: string): Promise<WorldSummary> => {
@@ -336,29 +307,29 @@ class Client {
 				});
 			});
 		};
-		httpget(lineUrl).then(value => {
-			this.line.addData(value);
+		httpget(vbarUrl).then(value => {
+			this.vbar.addData(value);
 			this.changeCategory("confirmed");
 		}).catch(error => {
 			console.error(error);
 		});
 	}
 	public dispose(): void {
-		this.line?.dispose();
+		this.vbar?.dispose();
 	}
-	public getLineData(): Readonly<Array<Context>> {
-		return this.line.getLineData();
+	public getLineData(): Readonly<Array<ChartPathData>> {
+		return this.vbar.getLineData();
 	}
 	public changeCategory(cate: NumberStr): void {
-		this.line.clear();
-		this.line.changeData(cate);
-		this.line.draw();
+		this.vbar.clear();
+		this.vbar.changeData(cate);
+		this.vbar.draw();
 	}
 	public changeYScale(scale: YScaleType): void {
-		this.line.clear();
-		this.line.resetYScale(scale);
-		this.line.changeData(dispdata.nowcategory);
-		this.line.draw();
+		this.vbar.clear();
+		this.vbar.resetYScale(scale);
+		this.vbar.changeData(dispdata.nowcategory);
+		this.vbar.draw();
 	}
 	public static get(url: string, func: (xhr: XMLHttpRequest) => void, err: (txt: string) => void) {
 		const xhr = new XMLHttpRequest();
@@ -386,6 +357,9 @@ class Client {
 }
 
 const dispdata: Display = {
+	confirmed_now: "",
+	deaths_now: "",
+	recovered_now: "",
 	categorys: [
 		{ id: "confirmed", name: "感染数" },
 		{ id: "deaths", name: "死亡数" },
@@ -403,7 +377,8 @@ const dispdata: Display = {
 		}
 	},
 	nowcategory: "confirmed",
-	nowyscale: "Liner"
+	nowyscale: "Liner",
+	nowcountry: base64encode("Japan")
 };
 const vm = new Vue({
 	el: "#container",
@@ -421,39 +396,12 @@ const vm = new Vue({
 		countryChange: () => {
 			cli.changeCategory(dispdata.nowcategory);
 		},
-		countryCheckAllClick: () => {
-			for (const country of dispdata.countrys) {
-				country.checked = true;
-			}
-			cli.changeCategory(dispdata.nowcategory);
-		},
-		countryUncheckAllClick: () => {
-			for (const country of dispdata.countrys) {
-				country.checked = false;
-			}
-			cli.changeCategory(dispdata.nowcategory);
-		},
-		countryCheckBest10Click: () => {
-			const indexmap: { [key in string]: number } = {};
-			let cindex = 0;
-			for (const country of dispdata.countrys) {
-				country.checked = false;
-				indexmap[country.name] = cindex;
-				cindex++;
-			}
-			const datalist = dispdata.countrys.concat();
-			const target = NumberIndex[dispdata.nowcategory];
-			datalist.sort((a, b) => b.data[target] - a.data[target]);
-			const len = Math.min(datalist.length, 10);
-			for (let i = 0; i < len; i++) {
-				const index = indexmap[datalist[i].name];
-				dispdata.countrys[index].checked = true;
-			}
-			cli.changeCategory(dispdata.nowcategory);
-		},
 		sliderChange: () => {
 			cli.changeCategory(dispdata.nowcategory);
 		}
+	},
+	computed: {
+		nowcountrystr: () => base64decode(dispdata.nowcountry)
 	}
 });
 const cli = new Client();

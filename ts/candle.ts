@@ -26,18 +26,21 @@ type WorldSummary = {
 
 type ChartPathData = {
 	date: Date;
-	data: number;
-}
-
-type Context = {
-	readonly name: string;
-	values: ChartPathData[];
+	start: Date;
+	end: Date;
+	open: number;
+	close: number;
+	high: number;
+	low: number;
 }
 
 type NumberStr = "confirmed" | "deaths" | "recovered";
 type YScaleType = "Liner" | "Log";
 
 type Display = {
+	confirmed_now: string;
+	deaths_now: string;
+	recovered_now: string;
 	categorys: Array<{ id: NumberStr, name: string }>;
 	yscales: Array<{ id: YScaleType, name: string }>;
 	countrys: Array<{
@@ -54,6 +57,7 @@ type Display = {
 	};
 	nowcategory: NumberStr;
 	nowyscale: YScaleType;
+	nowcountry: string;
 }
 
 const NumberIndex: { readonly [key in NumberStr]: number } = {
@@ -61,12 +65,12 @@ const NumberIndex: { readonly [key in NumberStr]: number } = {
 	deaths: 1,
 	recovered: 2,
 };
-const svgIDLine = "svgline";
-const lineUrl = "/data/daily_reports/summary.json";
+const svgIDcandle = "svgcandle";
+const candleUrl = "/data/daily_reports/summary.json";
 const timeFormat = d3.timeFormat("%Y/%m/%d");
 const formatNumberConmma = d3.format(",d");
-const line_xd_default: readonly [Date, Date] = [new Date(2099, 11, 31), new Date(2001, 0, 1)];
-const line_yd_default: readonly [number, number] = [0, 0];
+const candle_xd_default: readonly [Date, Date] = [new Date(2099, 11, 31), new Date(2001, 0, 1)];
+const candle_yd_default: readonly [number, number] = [0, 0];
 const base64encode = (str: string): string => window.btoa(unescape(encodeURIComponent(str)));
 const base64decode = (str: string): string => decodeURIComponent(escape(window.atob(str)));
 const atoi = (str: string): number => parseInt(str, 10);
@@ -76,26 +80,25 @@ const strToDate = (str: string): Date => {
 	return new Date(datearray[0], datearray[1] - 1, datearray[2]);
 }
 
-class LineChart {
+class CandleChart {
 	private readonly margin: Box = { top: 10, right: 10, bottom: 20, left: 60 };
 	private width: number;
 	private height: number;
 
-	private line?: d3.Selection<SVGGElement, Context, SVGSVGElement, unknown>;
-	private line_x: d3.ScaleTime<number, number>;
-	private line_y: d3.ScaleLinear<number, number> | d3.ScaleLogarithmic<number, number>;
-	private line_xAxis: d3.Axis<Date>;
-	private line_yAxis: d3.Axis<number>;
-	private line_line: d3.Line<ChartPathData>;
-	private line_path_d: (d: Context) => string | null;
-	private line_color: d3.ScaleOrdinal<string, string>;
-	private line_path_stroke: (d: { name: string }) => string;
+	private candle?: d3.Selection<SVGGElement, ChartPathData, SVGSVGElement, unknown>;
+	private candle_x: d3.ScaleTime<number, number>;
+	private candle_y: d3.ScaleLinear<number, number> | d3.ScaleLogarithmic<number, number>;
+	private candle_xAxis: d3.Axis<Date>;
+	private candle_yAxis: d3.Axis<number>;
+	private candle_color: d3.ScaleOrdinal<string, string>;
+	private candle_rect_stroke: (d: ChartPathData, i: number) => string;
 
 	private svg: d3.Selection<SVGSVGElement, unknown, HTMLElement, unknown>;
 	private svgid: string;
-	private linedata: Array<Context>;
+	private candledata: ChartPathData[];
 	private raw?: WorldSummary;
 	private target: NumberStr;
+	private candlewidth: number;
 
 	constructor(svgid: string) {
 		this.svgid = svgid;
@@ -104,38 +107,33 @@ class LineChart {
 		this.width = this.width - this.margin.left - this.margin.right;
 		this.height = 720 - this.margin.top - this.margin.bottom;
 		this.target = "confirmed";
-		this.linedata = [];
+		this.candledata = [];
+		this.candlewidth = 10;
 
 		this.svg = d3.select("#" + this.svgid).append("svg");
 		this.svg
 			.attr("width", this.width + this.margin.left + this.margin.right + 10)
 			.attr("height", this.height + this.margin.top + this.margin.bottom + 10);
 
-		this.line_x = d3.scaleTime()
-			.domain(line_xd_default.concat())
+		this.candle_x = d3.scaleTime()
+			.domain(candle_xd_default.concat())
 			.range([0, this.width]);
-		this.line_y = d3.scaleLinear()
-			.domain(line_yd_default.concat())
+		this.candle_y = d3.scaleLinear()
+			.domain(candle_yd_default.concat())
 			.range([this.height, 0]);
-		this.line_xAxis = d3.axisBottom<Date>(this.line_x)
+		this.candle_xAxis = d3.axisBottom<Date>(this.candle_x)
 			.tickSizeInner(-this.height)
 			.tickFormat(timeFormat)
 			.tickPadding(7)
 			.ticks(5);
-		this.line_yAxis = d3.axisLeft<number>(this.line_y)
+		this.candle_yAxis = d3.axisLeft<number>(this.candle_y)
 			.tickSizeInner(-this.width)
 			.tickPadding(7)
 			.ticks(5);
-		this.line_line = d3.line<ChartPathData>()
-			.curve(d3.curveLinear)
-			//.curve(d3.curveMonotoneX)
-			//.curve(d3.curveStepAfter)
-			.x(d => this.line_x(d.date))
-			.y(d => this.line_y(d.data));
-		this.line_path_d = d => this.line_line(d.values);
 
-		this.line_color = d3.scaleOrdinal(d3.schemeCategory10);
-		this.line_path_stroke = d => this.line_color(d.name);
+		this.candle_color = d3.scaleOrdinal<string>().range(["#b94047", "#47ba41", "#4147ba", "#bab441", "#41bab4", "#b441ba"]);
+		this.candle_color.domain(["red", "green", "blue"]);
+		this.candle_rect_stroke = d => (d.open > d.close) ? this.candle_color("red") : this.candle_color("green");
 	}
 	public dispose(): void {
 		const doc = document.getElementById(this.svgid);
@@ -146,79 +144,113 @@ class LineChart {
 	public clear(): void {
 		this.svg.selectAll("g").remove();
 	}
-	public getLineData(): Readonly<Array<Context>> {
-		return this.linedata.concat();
+	public getLineData(): Readonly<ChartPathData[]> {
+		return this.candledata.concat();
 	}
 	public changeData(target: NumberStr): void {
 		if (!this.raw) {
 			return;
 		}
 		this.target = target;
-		this.linedata = [];
+		this.candledata = [];
 
 		const index = NumberIndex[target];
 		const countrys = this.raw.countrys;
-		const line_yd = this.line_y.domain();
+		const line_yd = this.candle_y.domain();
 		const line_xd = [
 			strToDate(dispdata.slider.xaxis.value[0]),
 			strToDate(dispdata.slider.xaxis.value[1])
 		];
-		line_yd[1] = line_yd_default[1];
+		line_yd[1] = candle_yd_default[1];
 
-		const visibleCountry: {
-			[key in string]: {
-				visible: boolean,
-				index: number
-			}
-		} = {};
-		let vindex = 0;
-		for (const checkbox of dispdata.countrys) {
-			if (checkbox.checked) {
-				visibleCountry[checkbox.name] = {
-					visible: true,
-					index: vindex
-				};
-			}
-			vindex++;
-		}
-
-		for (const key in countrys) {
-			if (!countrys.hasOwnProperty(key)) {
-				continue;
-			}
-			if (!(visibleCountry[key]) || visibleCountry[key].visible === false) {
-				continue;
-			}
-			const country: Context = {
-				name: key,
-				values: []
-			};
+		const key = base64decode(dispdata.nowcountry);
+		if (countrys.hasOwnProperty(key)) {
+			let yesterday = 0;
+			let footstart: Date | undefined;
+			let date: Date | undefined;
+			let open = 0;
+			let close = 0;
+			let high = 0;
+			let low = 0;
 			for (const it of countrys[key].daily) {
-				const date = strToDate(it.date);
+				date = strToDate(it.date);
+				if (footstart === undefined) {
+					footstart = date;
+				}
+				const data = Math.max(it.cdr[index] - yesterday, 0);
+				yesterday = it.cdr[index];
 				if (date.getTime() < line_xd[0].getTime() || date.getTime() > line_xd[1].getTime()) {
 					continue;
 				}
-				const data = it.cdr[index];
 				if (data > line_yd[1]) {
 					line_yd[1] = data;
 				}
-				country.values.push({
-					date: date,
-					data: data,
+				if (date.getTime() < line_xd[0].getTime()) {
+					line_xd[0] = date;
+				}
+				if (date.getTime() > line_xd[1].getTime()) {
+					line_xd[1] = date;
+				}
+				close = data;
+				if (data > high) {
+					high = data;
+				}
+				if (data < low) {
+					low = data;
+				}
+				if (date.getDay() === 1) {
+					// 月曜日にリセット
+					this.candledata.push({
+						date: new Date(date.getTime() - 3600 * 24 * 1000 * 3.5),
+						start: new Date(date.getTime() - 3600 * 24 * 1000 * 7),
+						end: date,
+						open: open,
+						close: close,
+						high: high,
+						low: low
+					});
+					open = close;
+					high = close;
+					low = close;
+				}
+			}
+			if (date && date.getDay() !== 1) {
+				// 最終日が月曜日以外ならデータ追加
+				const monday = (date.getDay() + 6) % 7; // 月曜日からの経過日数を取得
+				const start = new Date(date.getTime() - 3600 * 24 * 1000 * monday);
+				this.candledata.push({
+					date: new Date(start.getTime() + 3600 * 24 * 1000 * 3.5),
+					start: start,
+					end: date,
+					open: open,
+					close: close,
+					high: high,
+					low: low
 				});
 			}
-			if (country.values.length > 0) {
-				this.linedata.push(country);
-			}
+			dispdata.confirmed_now = formatNumberConmma(countrys[key].cdr[0]);
+			dispdata.deaths_now = formatNumberConmma(countrys[key].cdr[1]);
+			dispdata.recovered_now = formatNumberConmma(countrys[key].cdr[2]);
 		}
-		this.line_x.domain(line_xd);
-		this.line_y.domain(line_yd);
-		this.line_y.nice();
+
+		if (this.candledata && this.candledata.length > 0) {
+			const start = line_xd[0].getTime();
+			const end = line_xd[1].getTime();
+			this.candlewidth = Math.max(Math.floor((this.width / Math.max((end - start) / (3600 * 24 * 1000 * 7), 1)) * 0.95), 3);
+		} else {
+			this.candlewidth = 10;
+		}
+		this.candle_x.domain(line_xd);
+		this.candle_y.domain(line_yd);
+		this.candle_y.nice();
+
+		dispdata.slider.xaxis.value[0] = timeFormat(line_xd[0]);
+		dispdata.slider.xaxis.value[1] = timeFormat(line_xd[1]);
 	}
 	public addData(raw: WorldSummary): void {
 		this.raw = raw;
 		dispdata.countrys = [];
-		const line_xd = line_xd_default.concat();
+		const line_xd = candle_xd_default.concat();
 
 		for (const key in raw.countrys) {
 			if (!raw.countrys.hasOwnProperty(key)) {
@@ -252,79 +284,81 @@ class LineChart {
 		}
 	}
 	public resetYScale(scale: YScaleType) {
-		const line_yd = this.line_y.domain();
+		const line_yd = this.candle_y.domain();
 		switch (scale) {
 			case "Liner":
-				this.line_y = d3.scaleLinear();
+				this.candle_y = d3.scaleLinear();
 				line_yd[0] = 0;
 				break;
 			case "Log":
-				this.line_y = d3.scaleLog().clamp(true);
+				this.candle_y = d3.scaleLog().clamp(true);
 				line_yd[0] = 1;
 				break;
 			default:
-				this.line_y = d3.scaleLinear();
+				this.candle_y = d3.scaleLinear();
 				line_yd[0] = 0;
 				break;
 		}
-		this.line_y.range([this.height, 0]);
-		this.line_y.domain(line_yd);
-		this.line_y.nice();
+		this.candle_y.range([this.height, 0]);
+		this.candle_y.domain(line_yd);
+		this.candle_y.nice();
 
-		this.line_yAxis = d3.axisLeft<number>(this.line_y)
+		this.candle_yAxis = d3.axisLeft<number>(this.candle_y)
 			.tickSizeInner(-this.width)
 			.tickFormat(formatNumberConmma)
 			.tickPadding(7)
 			.ticks(5);
 	}
 	public draw(): void {
-		if (!this.linedata) {
+		if (!this.candledata) {
 			// undefinedチェック
 			return;
 		}
 
-		this.line = this.svg.selectAll<SVGGElement, Context>(".line")
-			.data(this.linedata)
+		this.candle = this.svg.selectAll<SVGGElement, ChartPathData>(".candle")
+			.data(this.candledata)
 			.enter()
 			.append("g")
 			.attr("transform", `translate(${this.margin.left},${this.margin.top})`)
-			.attr("class", "line");
+			.attr("class", "candle");
 
-		this.line.append("path")			// 全体グラフ
-			.attr("class", "line")
-			.style("stroke", this.line_path_stroke)
-			.attr("d", this.line_path_d);
+		// ローソク本体
+		this.candle.append("rect")
+			.style("fill", this.candle_rect_stroke)
+			.attr("x", d => this.candle_x(d.date) - (this.candlewidth / 2))
+			.attr("y", d => Math.min(this.candle_y(d.open), this.candle_y(d.close)))  // 画面の上の方が数値が小さい
+			.attr("width", this.candlewidth)
+			.attr("height", d => Math.max(Math.abs(this.candle_y(d.open) - this.candle_y(d.close)), 2));
 
-		this.line.append("text")			// 国名
-			.attr("class", "line")
-			.attr("font-size", "12px")
-			.attr("x", d => {
-				const val = d.values[d.values.length - 1];
-				return this.line_x(val.date) - d.name.length * 5;
-			})
-			.attr("y", d => this.line_y(d.values[d.values.length - 1].data))
-			.style("fill", "black")
-			.style("stroke", "black")
-			.style("stroke-width", "0px")
-			.text(d => d.name);
+		// 値動きの範囲
+		this.candle.append("line")
+			.attr("x1", d => this.candle_x(d.date))
+			.attr("y1", d => this.candle_y(d.high))
+			.attr("x2", d => this.candle_x(d.date))
+			.attr("y2", d => this.candle_y(d.low))
+			.attr("stroke-width", 2)
+			.style("stroke", this.candle_rect_stroke);
+
+		this.candle.append("title")
+			.text(d => `date:${timeFormat(d.start)}-${timeFormat(d.end)}\nopen:${d.open}\nclose:${d.close}\nhigh:${d.high}\nlow:${d.low}`);
 
 		this.svg.append("g")				// 全体x目盛軸
 			.attr("class", "x axis")
 			.attr("transform", `translate(${this.margin.left},${this.height + this.margin.top})`)
-			.call(this.line_xAxis);
+			.call(this.candle_xAxis);
 
 		this.svg.append("g")				// 全体y目盛軸
 			.attr("class", "y axis")
 			.attr("transform", `translate(${this.margin.left},${this.margin.top})`)
-			.call(this.line_yAxis);
+			.call(this.candle_yAxis);
 	}
 }
 
 class Client {
-	private line: LineChart;
+	private candle: CandleChart;
 
 	constructor() {
-		this.line = new LineChart(svgIDLine);
+		this.candle = new CandleChart(svgIDcandle);
 	}
 	public run(): void {
 		const httpget = (url: string): Promise<WorldSummary> => {
@@ -336,29 +370,29 @@ class Client {
 				});
 			});
 		};
-		httpget(lineUrl).then(value => {
-			this.line.addData(value);
+		httpget(candleUrl).then(value => {
+			this.candle.addData(value);
 			this.changeCategory("confirmed");
 		}).catch(error => {
 			console.error(error);
 		});
 	}
 	public dispose(): void {
-		this.line?.dispose();
+		this.candle?.dispose();
 	}
-	public getLineData(): Readonly<Array<Context>> {
-		return this.line.getLineData();
+	public getLineData(): Readonly<Array<ChartPathData>> {
+		return this.candle.getLineData();
 	}
 	public changeCategory(cate: NumberStr): void {
-		this.line.clear();
-		this.line.changeData(cate);
-		this.line.draw();
+		this.candle.clear();
+		this.candle.changeData(cate);
+		this.candle.draw();
 	}
 	public changeYScale(scale: YScaleType): void {
-		this.line.clear();
-		this.line.resetYScale(scale);
-		this.line.changeData(dispdata.nowcategory);
-		this.line.draw();
+		this.candle.clear();
+		this.candle.resetYScale(scale);
+		this.candle.changeData(dispdata.nowcategory);
+		this.candle.draw();
 	}
 	public static get(url: string, func: (xhr: XMLHttpRequest) => void, err: (txt: string) => void) {
 		const xhr = new XMLHttpRequest();
@@ -386,6 +420,9 @@ class Client {
 }
 
 const dispdata: Display = {
+	confirmed_now: "",
+	deaths_now: "",
+	recovered_now: "",
 	categorys: [
 		{ id: "confirmed", name: "感染数" },
 		{ id: "deaths", name: "死亡数" },
@@ -403,7 +440,8 @@ const dispdata: Display = {
 		}
 	},
 	nowcategory: "confirmed",
-	nowyscale: "Liner"
+	nowyscale: "Liner",
+	nowcountry: base64encode("Japan")
 };
 const vm = new Vue({
 	el: "#container",
@@ -421,39 +459,12 @@ const vm = new Vue({
 		countryChange: () => {
 			cli.changeCategory(dispdata.nowcategory);
 		},
-		countryCheckAllClick: () => {
-			for (const country of dispdata.countrys) {
-				country.checked = true;
-			}
-			cli.changeCategory(dispdata.nowcategory);
-		},
-		countryUncheckAllClick: () => {
-			for (const country of dispdata.countrys) {
-				country.checked = false;
-			}
-			cli.changeCategory(dispdata.nowcategory);
-		},
-		countryCheckBest10Click: () => {
-			const indexmap: { [key in string]: number } = {};
-			let cindex = 0;
-			for (const country of dispdata.countrys) {
-				country.checked = false;
-				indexmap[country.name] = cindex;
-				cindex++;
-			}
-			const datalist = dispdata.countrys.concat();
-			const target = NumberIndex[dispdata.nowcategory];
-			datalist.sort((a, b) => b.data[target] - a.data[target]);
-			const len = Math.min(datalist.length, 10);
-			for (let i = 0; i < len; i++) {
-				const index = indexmap[datalist[i].name];
-				dispdata.countrys[index].checked = true;
-			}
-			cli.changeCategory(dispdata.nowcategory);
-		},
 		sliderChange: () => {
 			cli.changeCategory(dispdata.nowcategory);
 		}
+	},
+	computed: {
+		nowcountrystr: () => base64decode(dispdata.nowcountry)
 	}
 });
 const cli = new Client();

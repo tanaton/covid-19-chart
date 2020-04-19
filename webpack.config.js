@@ -4,7 +4,10 @@ module.exports = {
 	mode: 'production',
 	entry: {
 		treemap: './ts/treemap.ts',
-		line: './ts/line.ts'
+		line: './ts/line.ts',
+		vertical_bar: './ts/vertical_bar.ts',
+		horizontal_bar: './ts/horizontal_bar.ts',
+		candle: './ts/candle.ts'
 	},
 	output: {
 		path: path.join(__dirname, 'www/js'),

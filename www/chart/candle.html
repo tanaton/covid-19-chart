@@ -14,9 +14,25 @@
 			padding-top: 5.5rem;
 		}
 
-		#svgline {
+		#svgcandle {
 			width: 95%;
 			max-width: 8000px;
+		}
+
+		#last-data {
+			font-size: 24pt;
+		}
+
+		.confirmed {
+			color: #e6b422;
+		}
+
+		.deaths {
+			color: #b94047;
+		}
+
+		.recovered {
+			color: #47ba41;
 		}
 
 		.axis path,
@@ -31,17 +47,7 @@
 			opacity: 0.15;
 		}
 
-		.line {
-			fill: none;
-			stroke-width: 1.5px;
-		}
-
 		input[type=radio]:checked+label {
-			text-decoration: underline;
-			text-decoration-color: black;
-		}
-
-		input[type=checkbox]:checked+label {
 			text-decoration: underline;
 			text-decoration-color: black;
 		}
@@ -73,7 +79,7 @@
 						</a>
 					</li>
 					<li class="nav-item">
-						<a class="navbar-brand nav-link active" href="/chart/line.html" title="Line">
+						<a class="navbar-brand nav-link" href="/chart/line.html" title="Line">
 							<svg class="bi bi-graph-up" width="1em" height="1em" viewBox="0 0 16 16" fill="currentColor"
 								xmlns="http://www.w3.org/2000/svg">
 								<path d="M0 0h1v16H0V0zm1 15h15v1H1v-1z" />
@@ -110,7 +116,8 @@
 						</a>
 					</li>
 					<li class="nav-item">
-						<a class="navbar-brand nav-link" href="/chart/candle.html" title="Candle">&#x1F56F;Candle</a>
+						<a class="navbar-brand nav-link active" href="/chart/candle.html"
+							title="Candle">&#x1F56F;Candle</a>
 					</li>
 				</ul>
 			</div>
@@ -121,9 +128,25 @@
 					<h1>世界の様子</h1>
 					<p class="lead">COVID-19の変動を記録していくサイトです。</p>
 					<hr>
+					<h2 v-cloak>{{ nowcountrystr }}の現在</h2>
+					<span id="last-data" class="row" v-cloak>
+						<div class="col-md-2 align-self-start">
+							<span>感染数</span>
+							<span class="confirmed">{{ confirmed_now }}</span>
+						</div>
+						<div class="col-md-2 align-self-start">
+							<span>死者数</span>
+							<span class="deaths">{{ deaths_now }}</span>
+						</div>
+						<div class="col-md-2 align-self-start">
+							<span>回復数</span>
+							<span class="recovered">{{ recovered_now }}</span>
+						</div>
+					</span>
+					<hr>
 					<div class="row">
-						<div class="col-4 align-self-start">
-							<h2>各国の様子(Line)</h2>
+						<div class="col-4 align-self-start" v-cloak>
+							<h2>{{ nowcountrystr }}の変動数(Candle)</h2>
 						</div>
 						<div class="col-4 align-self-end" v-cloak>
 							<div v-for="yscale in yscales" class="form-check form-check-inline">
@@ -142,17 +165,9 @@
 							</div>
 						</div>
 					</div>
-					<div id="svgline"></div>
+					<div id="svgcandle"></div>
 					<div class="row">
-						<div class="col-md-6 align-self-start" v-cloak>
-							<button type="button" class="btn btn-success"
-								v-on:click="countryCheckAllClick">全部チェックする</button>
-							<button type="button" class="btn btn-danger"
-								v-on:click="countryUncheckAllClick">全部チェックを外す</button>
-							<button type="button" class="btn btn-warning"
-								v-on:click="countryCheckBest10Click">上位10ヶ国のみチェックする</button>
-						</div>
-						<div class="col-md-6 align-self-start" v-cloak>
+						<div class="col-md-8 align-self-start" v-cloak>
 							<template>
 								<div>
 									範囲指定：{{ slider.xaxis.value[0] }}～{{ slider.xaxis.value[1] }}
@@ -166,9 +181,8 @@
 						<div class="col-md-12" v-cloak>
 							国選択：
 							<div v-for="country in countrys" class="form-check form-check-inline">
-								<input class="form-check-input checkbox-country" type="checkbox"
-									v-bind:name="country.id" v-bind:id="country.id" v-on:change="countryChange"
-									v-model="country.checked">
+								<input class="form-check-input radio-country" type="radio" :value="country.id"
+									v-bind:id="country.id" v-model="nowcountry" v-on:change="countryChange">
 								<label class="form-check-label" v-bind:for="country.id">{{ country.name }}</label>
 							</div>
 						</div>
@@ -179,7 +193,7 @@
 	</div>
 	<script src="/js/lib/jquery-3.4.1.min.js"></script>
 	<script src="/js/lib/bootstrap.min.js"></script>
-	<script src="/js/line.js"></script>
+	<script src="/js/candle.js"></script>
 </body>
 
 </html>

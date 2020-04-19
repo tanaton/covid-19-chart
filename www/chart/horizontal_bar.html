@@ -14,7 +14,7 @@
 			padding-top: 5.5rem;
 		}
 
-		#svgline {
+		#svghbar {
 			width: 95%;
 			max-width: 8000px;
 		}
@@ -73,7 +73,7 @@
 						</a>
 					</li>
 					<li class="nav-item">
-						<a class="navbar-brand nav-link active" href="/chart/line.html" title="Line">
+						<a class="navbar-brand nav-link" href="/chart/line.html" title="Line">
 							<svg class="bi bi-graph-up" width="1em" height="1em" viewBox="0 0 16 16" fill="currentColor"
 								xmlns="http://www.w3.org/2000/svg">
 								<path d="M0 0h1v16H0V0zm1 15h15v1H1v-1z" />
@@ -88,7 +88,7 @@
 						</a>
 					</li>
 					<li class="nav-item">
-						<a class="navbar-brand nav-link" href="/chart/horizontal_bar.html" title="HorizontalBar">
+						<a class="navbar-brand nav-link active" href="/chart/horizontal_bar.html" title="HorizontalBar">
 							<svg class="bi bi-justify-left" width="1em" height="1em" viewBox="0 0 16 16"
 								fill="currentColor" xmlns="http://www.w3.org/2000/svg">
 								<path fill-rule="evenodd"
@@ -123,14 +123,14 @@
 					<hr>
 					<div class="row">
 						<div class="col-4 align-self-start">
-							<h2>各国の様子(Line)</h2>
+							<h2>各国の様子(HorizontalBar)</h2>
 						</div>
 						<div class="col-4 align-self-end" v-cloak>
-							<div v-for="yscale in yscales" class="form-check form-check-inline">
-								<input class="form-check-input" type="radio" v-bind:name="yscale.id"
-									v-bind:id="yscale.id" v-model="nowyscale" v-bind:value="yscale.id"
-									v-on:change="yscaleChange">
-								<label class="form-check-label" v-bind:for="yscale.id">{{ yscale.name }}</label>
+							<div v-for="xscale in xscales" class="form-check form-check-inline">
+								<input class="form-check-input" type="radio" v-bind:name="xscale.id"
+									v-bind:id="xscale.id" v-model="nowxscale" v-bind:value="xscale.id"
+									v-on:change="xscaleChange">
+								<label class="form-check-label" v-bind:for="xscale.id">{{ xscale.name }}</label>
 							</div>
 						</div>
 						<div class="col-4 align-self-end" v-cloak>
@@ -142,35 +142,23 @@
 							</div>
 						</div>
 					</div>
-					<div id="svgline"></div>
+					<div id="svghbar"></div>
 					<div class="row">
-						<div class="col-md-6 align-self-start" v-cloak>
-							<button type="button" class="btn btn-success"
-								v-on:click="countryCheckAllClick">全部チェックする</button>
-							<button type="button" class="btn btn-danger"
-								v-on:click="countryUncheckAllClick">全部チェックを外す</button>
-							<button type="button" class="btn btn-warning"
-								v-on:click="countryCheckBest10Click">上位10ヶ国のみチェックする</button>
+						<div class="col-4 align-self-end" v-cloak>
+							<div v-for="rank in ranks" class="form-check form-check-inline">
+								<input class="form-check-input" type="radio" v-bind:name="rank.id" v-bind:id="rank.id"
+									v-model="nowrank" v-bind:value="rank.value" v-on:change="rankChange">
+								<label class="form-check-label" v-bind:for="rank.id">{{ rank.name }}</label>
+							</div>
 						</div>
-						<div class="col-md-6 align-self-start" v-cloak>
+						<div class="col-md-8 align-self-start" v-cloak>
 							<template>
 								<div>
-									範囲指定：{{ slider.xaxis.value[0] }}～{{ slider.xaxis.value[1] }}
-									<vue-slider v-model="slider.xaxis.value" :data="slider.xaxis.data"
+									日付指定：{{ slider.date.value }}
+									<vue-slider v-model="slider.date.value" :data="slider.date.data"
 										v-on:change="sliderChange"></vue-slider>
 								</div>
 							</template>
-						</div>
-					</div>
-					<div class="row">
-						<div class="col-md-12" v-cloak>
-							国選択：
-							<div v-for="country in countrys" class="form-check form-check-inline">
-								<input class="form-check-input checkbox-country" type="checkbox"
-									v-bind:name="country.id" v-bind:id="country.id" v-on:change="countryChange"
-									v-model="country.checked">
-								<label class="form-check-label" v-bind:for="country.id">{{ country.name }}</label>
-							</div>
 						</div>
 					</div>
 				</main>
@@ -179,7 +167,7 @@
 	</div>
 	<script src="/js/lib/jquery-3.4.1.min.js"></script>
 	<script src="/js/lib/bootstrap.min.js"></script>
-	<script src="/js/line.js"></script>
+	<script src="/js/horizontal_bar.js"></script>
 </body>
 
 </html>
