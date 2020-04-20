@@ -103,8 +103,8 @@ class CandleChart {
 	constructor(svgid: string) {
 		this.svgid = svgid;
 		const div = document.getElementById(this.svgid);
-		this.width = div?.offsetWidth ?? 8000;
-		this.height = Math.min(this.width, 860) - this.margin.top - this.margin.bottom;
+		this.width = div?.offsetWidth ?? 1600;
+		this.height = Math.min(this.width, 720) - this.margin.top - this.margin.bottom;
 		this.width = this.width - this.margin.left - this.margin.right;
 		this.target = "confirmed";
 		this.candledata = [];
