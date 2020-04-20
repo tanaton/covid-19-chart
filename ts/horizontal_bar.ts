@@ -389,8 +389,8 @@ const dispdata: Display = {
 		{ id: "recovered", name: "回復数" }
 	],
 	xscales: [
-		{ id: "Liner", name: "Y軸線形" },
-		{ id: "Log", name: "Y軸対数" },
+		{ id: "Liner", name: "線形" },
+		{ id: "Log", name: "対数" },
 	],
 	countrys: [],
 	slider: {
