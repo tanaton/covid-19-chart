@@ -66,7 +66,7 @@ const NumberIndex: { readonly [key in NumberStr]: number } = {
 	recovered: 2,
 };
 const svgIDcandle = "svgcandle";
-const candleUrl = "/data/daily_reports/summary.json";
+const summaryUrl = "/data/daily_reports/summary.json";
 const timeFormat = d3.timeFormat("%Y/%m/%d");
 const formatNumberConmma = d3.format(",d");
 const candle_xd_default: readonly [Date, Date] = [new Date(2099, 11, 31), new Date(2001, 0, 1)];
@@ -370,7 +370,7 @@ class Client {
 				});
 			});
 		};
-		httpget(candleUrl).then(value => {
+		httpget(summaryUrl).then(value => {
 			this.candle.addData(value);
 			this.changeCategory("confirmed");
 		}).catch(error => {

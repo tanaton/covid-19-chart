@@ -61,7 +61,7 @@ const NumberIndex: { readonly [key in NumberStr]: number } = {
 	recovered: 2,
 };
 const svgIDvbar = "svgvbar";
-const vbarUrl = "/data/daily_reports/summary.json";
+const summaryUrl = "/data/daily_reports/summary.json";
 const timeFormat = d3.timeFormat("%Y/%m/%d");
 const formatNumberConmma = d3.format(",d");
 const vbar_xd_default: readonly [Date, Date] = [new Date(2099, 11, 31), new Date(2001, 0, 1)];
@@ -307,7 +307,7 @@ class Client {
 				});
 			});
 		};
-		httpget(vbarUrl).then(value => {
+		httpget(summaryUrl).then(value => {
 			this.vbar.addData(value);
 			this.changeCategory("confirmed");
 		}).catch(error => {

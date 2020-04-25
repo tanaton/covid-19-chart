@@ -41,6 +41,7 @@ type Display = {
 }
 
 const svgIDTreemap = "svgtreemap";
+const summaryUrl = "/data/daily_reports/summary.json";
 const treemapUrlToday = "/data/daily_reports/today.json";
 const treemapUrl1dayago = "/data/daily_reports/-1day.json";
 const treemapUrl2dayago = "/data/daily_reports/-2day.json";

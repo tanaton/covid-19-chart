@@ -70,8 +70,8 @@ const NumberIndex: { readonly [key in NumberStr]: number } = {
 	deaths: 1,
 	recovered: 2,
 };
-const svgIDLine = "svghbar";
-const lineUrl = "/data/daily_reports/summary.json";
+const svgIDhbar = "svghbar";
+const summaryUrl = "/data/daily_reports/summary.json";
 const timeFormat = d3.timeFormat("%Y/%m/%d");
 const formatNumberConmma = d3.format(",d");
 const line_xd_default: readonly [number, number] = [0, 0];
@@ -315,7 +315,7 @@ class Client {
 	private hbar: HorizontalBarChart;
 
 	constructor() {
-		this.hbar = new HorizontalBarChart(svgIDLine);
+		this.hbar = new HorizontalBarChart(svgIDhbar);
 	}
 	public run(): void {
 		const httpget = (url: string): Promise<WorldSummary> => {
@@ -327,7 +327,7 @@ class Client {
 				});
 			});
 		};
-		httpget(lineUrl).then(value => {
+		httpget(summaryUrl).then(value => {
 			this.hbar.addData(value);
 			this.changeCategory("confirmed");
 		}).catch(error => {
