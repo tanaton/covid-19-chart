@@ -1,5 +1,6 @@
 import * as d3 from 'd3';
 import Vue from 'vue';
+import VueSlider from 'vue-slider-component';
 
 type Box = {
 	readonly top: number;
@@ -8,19 +9,30 @@ type Box = {
 	readonly left: number;
 }
 
-type Dataset = {
-	confirmed: number;
-	deaths: number;
-	recovered: number;
-	last_update?: number;
-	latitude?: number;
-	longitude?: number;
-	children?: {
-		[key in string]: Dataset;
-	}
+type CDR = [number, number, number];
+
+type DatasetSimple = {
+	date: string;
+	cdr: CDR;
 }
-type DailyData = {
-	[key in string]: Dataset;
+type CountrySummary = {
+	daily: DatasetSimple[];
+	cdr: CDR;
+}
+type WorldSummary = {
+	countrys: { [key in string]: CountrySummary };
+	cdr: CDR;
+}
+
+type DateSummary = {
+	daily: {
+		[datestr in string]: {
+			countrys: { [country in string]: {
+				cdr: CDR;
+				active: [number, number];
+			} };
+		};
+	};
 }
 
 type HierarchyDatum = {
@@ -37,18 +49,36 @@ type Display = {
 	deaths_now: string;
 	recovered_now: string;
 	categorys: Array<{ id: NumberStr, name: string }>;
+	slider: {
+		date: {
+			value: string;
+			data: string[];
+		};
+	};
 	nowcategory: NumberStr;
 }
 
+const NumberIndex: { readonly [key in NumberStr]: number } = {
+	confirmed: 0,
+	deaths: 1,
+	recovered: 2,
+};
 const svgIDTreemap = "svgtreemap";
 const summaryUrl = "/data/daily_reports/summary.json";
-const treemapUrlToday = "/data/daily_reports/today.json";
-const treemapUrl1dayago = "/data/daily_reports/-1day.json";
-const treemapUrl2dayago = "/data/daily_reports/-2day.json";
 
 const formatNumberSuffix = d3.format(",.3s");
 const formatNumberConmma = d3.format(",d");
 const formatNumberFloat = d3.format(".2f");
+
+const timeFormat = d3.timeFormat("%Y/%m/%d");
+const base64encode = (str: string): string => window.btoa(unescape(encodeURIComponent(str)));
+const base64decode = (str: string): string => decodeURIComponent(escape(window.atob(str)));
+const atoi = (str: string): number => parseInt(str, 10);
+const strToDate = (str: string): Date => {
+	const datearray = str.split("/").map<number>(atoi);
+	// 月は-1しないと期待通りに動作しない
+	return new Date(datearray[0], datearray[1] - 1, datearray[2]);
+}
 
 class TreemapChart {
 	private readonly margin: Box = { top: 10, right: 10, bottom: 20, left: 60 };
@@ -58,11 +88,13 @@ class TreemapChart {
 	private svg: d3.Selection<SVGSVGElement, unknown, HTMLElement, unknown>;
 	private svgid: string;
 	private nodes?: HierarchyDatum;
-	private data?: Array<DailyData>;
+	private raw?: WorldSummary;
+	private data?: DateSummary;
 	private target: NumberStr;
 	private colorReds: (num: number) => string;
 	private colorGreens: (num: number) => string;
 	private now: { [key in NumberStr]: number };
+	private nowdatestr: string;
 
 	constructor(svgid: string) {
 		this.svgid = svgid;
@@ -78,6 +110,7 @@ class TreemapChart {
 			deaths: 0,
 			recovered: 0
 		};
+		this.nowdatestr = "2020/04/01";
 
 		this.svg = d3.select("#" + this.svgid).append("svg");
 		this.svg
@@ -93,32 +126,8 @@ class TreemapChart {
 	public clear(): void {
 		this.svg.selectAll("g").remove();
 	}
-	private childrenWalk(key: string, data: Dataset, _1dayago?: Dataset): HierarchyDatum {
-		const hd: HierarchyDatum = {
-			name: key,
-			value: data[this.target],
-			active: [
-				data.confirmed - data.deaths - data.recovered,
-				_1dayago ? _1dayago.confirmed - _1dayago.deaths - _1dayago.recovered : 0,
-			]
-		};
-		for (const objkey in data.children) {
-			if (!data.children.hasOwnProperty(objkey)) {
-				continue;
-			}
-			let val1dayago: Dataset | undefined;
-			if (_1dayago?.children?.hasOwnProperty(objkey)) {
-				val1dayago = _1dayago.children[objkey];
-			}
-			if (!hd.children) {
-				hd.children = [];
-			}
-			//hd.children.push(this.childrenWalk(objkey, data.children[objkey], val1dayago));
-		}
-		return hd;
-	}
 	public changeData(target: NumberStr): void {
-		if (!this.data) {
+		if (!this.data || !this.data.daily) {
 			return;
 		}
 		this.nodes = {
@@ -133,26 +142,78 @@ class TreemapChart {
 			deaths: 0,
 			recovered: 0,
 		};
-		for (const key in this.data[0]) {
-			if (!this.data[0].hasOwnProperty(key)) {
+		const index = NumberIndex[target];
+		const datestr = dispdata.slider.date.value;
+		const day = (this.data.daily[datestr] !== undefined) ? this.data.daily[datestr] : this.data.daily[this.nowdatestr];
+		for (const key in day.countrys) {
+			if (!day.countrys.hasOwnProperty(key)) {
 				continue;
 			}
-			let val1dayago: Dataset | undefined;
-			if (this.data[1] && this.data[1].hasOwnProperty(key)) {
-				val1dayago = this.data[1][key];
-			}
-			this.nodes.children?.push(this.childrenWalk(key, this.data[0][key], val1dayago));
-			this.now.confirmed += this.data[0][key].confirmed;
-			this.now.deaths += this.data[0][key].deaths;
-			this.now.recovered += this.data[0][key].recovered;
+			const country = day.countrys[key];
+			this.nodes?.children?.push({
+				name: key,
+				value: country.cdr[index],
+				active: country.active
+			})
+			this.now.confirmed += country.cdr[0];
+			this.now.deaths += country.cdr[1];
+			this.now.recovered += country.cdr[2];
 		}
 		dispdata.confirmed_now = formatNumberConmma(this.now.confirmed);
 		dispdata.deaths_now = formatNumberConmma(this.now.deaths);
 		dispdata.recovered_now = formatNumberConmma(this.now.recovered);
 	}
-	public addData(data: DailyData[]): void {
-		this.data = data;
-		this.changeData(this.target);
+	public addData(raw: WorldSummary): void {
+		this.raw = raw;
+		this.data = { daily: {} };
+		let daterange: [Date, Date] = [new Date(2099, 0, 1), new Date(2000, 0, 1)];
+
+		for (const key in raw.countrys) {
+			if (!raw.countrys.hasOwnProperty(key)) {
+				continue;
+			}
+			const daily = raw.countrys[key].daily;
+			if (!daily || daily.length <= 0) {
+				continue;
+			}
+			let olddate: string = "";
+			for (const day of daily) {
+				const date = strToDate(day.date);
+				if (this.data.daily[day.date] === undefined) {
+					this.data.daily[day.date] = {
+						countrys: {}
+					};
+				}
+				if (this.data.daily[day.date].countrys[key] === undefined) {
+					this.data.daily[day.date].countrys[key] = { cdr: [0, 0, 0], active: [0, 0] };
+				}
+				this.data.daily[day.date].countrys[key].cdr = [day.cdr[0], day.cdr[1], day.cdr[2]];
+				if (olddate !== "" && this.data.daily[olddate]?.countrys[key]?.cdr) {
+					const yesterday = this.data.daily[olddate]?.countrys[key]?.cdr;
+					if (yesterday) {
+						this.data.daily[day.date].countrys[key].active = [
+							day.cdr[0] - day.cdr[1] - day.cdr[2],
+							yesterday[0] - yesterday[1] - yesterday[2]
+						];
+					}
+				}
+				// 時間範囲
+				if (date < daterange[0]) {
+					daterange[0] = date;
+				}
+				if (date > daterange[1]) {
+					daterange[1] = date;
+				}
+				olddate = day.date;
+			}
+		}
+		this.nowdatestr = timeFormat(daterange[1]);
+		dispdata.slider.date.value = this.nowdatestr;
+		let date: Date = new Date(daterange[0].getTime());
+		while (date <= daterange[1]) {
+			dispdata.slider.date.data.push(timeFormat(date));
+			date = new Date(date.getTime() + 60 * 60 * 24 * 1000);
+		}
 	}
 	public draw(): void {
 		if (!this.nodes) {
@@ -252,8 +313,8 @@ class Client {
 		this.treemap = new TreemapChart(svgIDTreemap);
 	}
 	public run(): void {
-		const httpget = (url: string): Promise<DailyData> => {
-			return new Promise<DailyData>((resolve, reject) => {
+		const httpget = (url: string): Promise<WorldSummary> => {
+			return new Promise<WorldSummary>((resolve, reject) => {
 				Client.get(url, xhr => {
 					resolve(JSON.parse(xhr.responseText));
 				}, (txt: string) => {
@@ -261,12 +322,9 @@ class Client {
 				});
 			});
 		};
-		Promise.all<DailyData>([
-			httpget(treemapUrlToday),
-			httpget(treemapUrl1dayago)
-		]).then(values => {
-			this.treemap.addData(values);
-			this.treemap.draw();
+		httpget(summaryUrl).then(value => {
+			this.treemap.addData(value);
+			this.changeCategory("confirmed");
 		}).catch(error => {
 			console.error(error);
 		});
@@ -313,15 +371,27 @@ const dispdata: Display = {
 		{ id: "deaths", name: "死亡数" },
 		{ id: "recovered", name: "回復数" }
 	],
+	slider: {
+		date: {
+			value: "2020/04/01",
+			data: []
+		}
+	},
 	nowcategory: "confirmed"
 };
 const vm = new Vue({
 	el: "#container",
 	data: dispdata,
+	components: {
+		'VueSlider': VueSlider,
+	},
 	methods: {
 		categoryChange: () => {
 			cli.changeCategory(dispdata.nowcategory);
-		}
+		},
+		sliderChange: () => {
+			cli.changeCategory(dispdata.nowcategory);
+		},
 	}
 });
 const cli = new Client();

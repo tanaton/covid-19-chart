@@ -8,6 +8,7 @@
 	<title>COVID-19 世界の様子</title>
 	<link rel="icon" href="/favicon.ico" type="image/vnd.microsoft.icon">
 	<link rel="stylesheet" href="/css/bootstrap.min.css">
+	<link rel="stylesheet" href="/css/slider.css">
 	<style>
 		body {
 			font: sans-serif;
@@ -154,6 +155,17 @@
 				</div>
 			</div>
 			<div id="svgtreemap"></div>
+			<div class="row">
+				<div class="col-md-8 align-self-start" v-cloak>
+					<template>
+						<div>
+							日付指定：{{ slider.date.value }}
+							<vue-slider v-model="slider.date.value" :data="slider.date.data" v-on:change="sliderChange">
+							</vue-slider>
+						</div>
+					</template>
+				</div>
+			</div>
 		</main>
 		<footer class="my-5 pt-5 text-muted text-center text-small">
 			<ul class="list-inline">
