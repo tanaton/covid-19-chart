@@ -35,7 +35,8 @@ type ChartPathData = {
 }
 
 type NumberStr = "confirmed" | "deaths" | "recovered";
-type YScaleType = "Liner" | "Log";
+type YScaleType = "liner" | "log";
+type QueryStr = "country" | "category" | "yscale";
 
 type Display = {
 	confirmed_now: string;
@@ -65,8 +66,14 @@ const NumberIndex: { readonly [key in NumberStr]: number } = {
 	deaths: 1,
 	recovered: 2,
 };
+const HashIndex: { readonly [key in QueryStr]: number } = {
+	country: 0,
+	category: 1,
+	yscale: 2,
+};
 const svgIDcandle = "svgcandle";
 const summaryUrl = "/data/daily_reports/summary.json";
+const defaultHash = "#country=Japan&category=confirmed&yscale=liner";
 const timeFormat = d3.timeFormat("%Y/%m/%d");
 const formatNumberConmma = d3.format(",d");
 const candle_xd_default: readonly [Date, Date] = [new Date(2099, 11, 31), new Date(2001, 0, 1)];
@@ -87,6 +94,8 @@ class CandleChart {
 
 	private candle?: d3.Selection<SVGGElement, ChartPathData, SVGSVGElement, unknown>;
 	private candle_x: d3.ScaleTime<number, number>;
+	private candle_yLiner: d3.ScaleLinear<number, number>;
+	private candle_yLog: d3.ScaleLogarithmic<number, number>;
 	private candle_y: d3.ScaleLinear<number, number> | d3.ScaleLogarithmic<number, number>;
 	private candle_xAxis: d3.Axis<Date>;
 	private candle_yAxis: d3.Axis<number>;
@@ -106,7 +115,7 @@ class CandleChart {
 		this.width = div?.offsetWidth ?? 1600;
 		this.height = Math.min(this.width, 720) - this.margin.top - this.margin.bottom;
 		this.width = this.width - this.margin.left - this.margin.right;
-		this.target = "confirmed";
+		this.target = dispdata.nowcategory;
 		this.candledata = [];
 		this.candlewidth = 10;
 
@@ -118,18 +127,20 @@ class CandleChart {
 		this.candle_x = d3.scaleTime()
 			.domain(candle_xd_default.concat())
 			.range([0, this.width]);
-		this.candle_y = d3.scaleLinear()
-			.domain(candle_yd_default.concat())
-			.range([this.height, 0]);
 		this.candle_xAxis = d3.axisBottom<Date>(this.candle_x)
 			.tickSizeInner(-this.height)
 			.tickFormat(timeFormat)
 			.tickPadding(7)
 			.ticks(5);
-		this.candle_yAxis = d3.axisLeft<number>(this.candle_y)
+		this.candle_yLiner = d3.scaleLinear();
+		this.candle_yLog = d3.scaleLog().clamp(true);
+		this.candle_y = this.candle_yLiner;
+		this.candle_yAxis = d3.axisLeft<number>(this.candle_yLiner)
 			.tickSizeInner(-this.width)
+			.tickFormat(formatNumberConmma)
 			.tickPadding(7)
 			.ticks(5);
+		this.resetYScale(dispdata.nowyscale);
 
 		this.candle_color = d3.scaleOrdinal<string>().range(["#b94047", "#47ba41", "#4147ba", "#bab441", "#41bab4", "#b441ba"]);
 		this.candle_color.domain(["red", "green", "blue"]);
@@ -286,28 +297,23 @@ class CandleChart {
 	public resetYScale(scale: YScaleType) {
 		const line_yd = this.candle_y.domain();
 		switch (scale) {
-			case "Liner":
-				this.candle_y = d3.scaleLinear();
+			case "liner":
+				this.candle_y = this.candle_yLiner;
 				line_yd[0] = 0;
 				break;
-			case "Log":
-				this.candle_y = d3.scaleLog().clamp(true);
+			case "log":
+				this.candle_y = this.candle_yLog;
 				line_yd[0] = 1;
 				break;
 			default:
-				this.candle_y = d3.scaleLinear();
+				this.candle_y = this.candle_yLiner;
 				line_yd[0] = 0;
 				break;
 		}
 		this.candle_y.range([this.height, 0]);
 		this.candle_y.domain(line_yd);
 		this.candle_y.nice();
-
-		this.candle_yAxis = d3.axisLeft<number>(this.candle_y)
-			.tickSizeInner(-this.width)
-			.tickFormat(formatNumberConmma)
-			.tickPadding(7)
-			.ticks(5);
+		this.candle_yAxis.scale(this.candle_y);
 	}
 	public draw(): void {
 		if (!this.candledata) {
@@ -356,8 +362,16 @@ class CandleChart {
 
 class Client {
 	private candle: CandleChart;
+	private query: [[QueryStr, string], [QueryStr, NumberStr], [QueryStr, YScaleType]];
 
-	constructor() {
+	constructor(hash: string = defaultHash) {
+		this.query = [
+			["country", "Japan"],
+			["category", "confirmed"],
+			["yscale", "liner"]
+		];
+		this.loadHash(hash);
+		this.updateHash();
 		this.candle = new CandleChart(svgIDcandle);
 	}
 	public run(): void {
@@ -372,7 +386,7 @@ class Client {
 		};
 		httpget(summaryUrl).then(value => {
 			this.candle.addData(value);
-			this.changeCategory("confirmed");
+			this.changeCategory();
 		}).catch(error => {
 			console.error(error);
 		});
@@ -380,17 +394,58 @@ class Client {
 	public dispose(): void {
 		this.candle?.dispose();
 	}
+	public loadHash(hash: string | undefined): void {
+		if (!hash) {
+			hash = location.hash;
+		}
+		if (hash.indexOf("#") === 0) {
+			hash.slice(1).split("&").forEach(it => {
+				const pair = it.split("=");
+				if (pair.length >= 2) {
+					const qs = pair[0] as QueryStr;
+					if (qs === "country") {
+						this.query[HashIndex[qs]] = [qs, decodeURI(pair[1])];
+					} else {
+						this.query[HashIndex[qs]] = [qs, pair[1]];
+					}
+				}
+			});
+		}
+		dispdata.nowcountry = this.query[0][1];
+		dispdata.nowcategory = this.query[1][1];
+		dispdata.nowyscale = this.query[2][1];
+	}
+	public createHash(): string {
+		return "#" + this.query.map((it, i) => {
+			if (i === HashIndex["country"]) {
+				it[1] = encodeURI(it[1]);
+			}
+			return it.join("=");
+		}).join("&");
+	}
+	public updateHash(): void {
+		const hash = this.createHash();
+		if (hash !== location.hash) {
+			location.hash = hash;
+		}
+	}
 	public getLineData(): Readonly<Array<ChartPathData>> {
 		return this.candle.getLineData();
 	}
-	public changeCategory(cate: NumberStr): void {
+	public change(): void {
 		this.candle.clear();
-		this.candle.changeData(cate);
+		this.candle.resetYScale(dispdata.nowyscale);
+		this.candle.changeData(dispdata.nowcategory);
 		this.candle.draw();
 	}
-	public changeYScale(scale: YScaleType): void {
+	public changeCategory(): void {
 		this.candle.clear();
-		this.candle.resetYScale(scale);
+		this.candle.changeData(dispdata.nowcategory);
+		this.candle.draw();
+	}
+	public changeYScale(): void {
+		this.candle.clear();
+		this.candle.resetYScale(dispdata.nowyscale);
 		this.candle.changeData(dispdata.nowcategory);
 		this.candle.draw();
 	}
@@ -429,8 +484,8 @@ const dispdata: Display = {
 		{ id: "recovered", name: "回復数" }
 	],
 	yscales: [
-		{ id: "Liner", name: "線形" },
-		{ id: "Log", name: "対数" },
+		{ id: "liner", name: "線形" },
+		{ id: "log", name: "対数" },
 	],
 	countrys: [],
 	slider: {
@@ -440,7 +495,7 @@ const dispdata: Display = {
 		}
 	},
 	nowcategory: "confirmed",
-	nowyscale: "Liner",
+	nowyscale: "liner",
 	nowcountry: base64encode("Japan")
 };
 const vm = new Vue({
@@ -451,21 +506,30 @@ const vm = new Vue({
 	},
 	methods: {
 		categoryChange: () => {
-			cli.changeCategory(dispdata.nowcategory);
+			cli.changeCategory();
 		},
 		yscaleChange: () => {
-			cli.changeYScale(dispdata.nowyscale);
+			cli.changeYScale();
 		},
 		countryChange: () => {
-			cli.changeCategory(dispdata.nowcategory);
+			cli.changeCategory();
 		},
 		sliderChange: () => {
-			cli.changeCategory(dispdata.nowcategory);
+			cli.changeCategory();
 		}
 	},
 	computed: {
 		nowcountrystr: () => base64decode(dispdata.nowcountry)
 	}
 });
-const cli = new Client();
+let cli = new Client(location.hash);
 cli.run();
+window.addEventListener("hashchange", () => {
+	const oldhash = cli.createHash();
+	cli.loadHash(location.hash);
+	const hash = cli.createHash();
+	if (hash !== oldhash) {
+		cli.updateHash();
+		cli.change();
+	}
+}, false);
