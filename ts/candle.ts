@@ -36,7 +36,7 @@ type ChartPathData = {
 
 type NumberStr = "confirmed" | "deaths" | "recovered";
 type YScaleType = "liner" | "log";
-type QueryStr = "country" | "category" | "yscale";
+type QueryStr = "country" | "category" | "yscale" | "startdate" | "enddate";
 
 type Display = {
 	confirmed_now: string;
@@ -70,6 +70,8 @@ const HashIndex: { readonly [key in QueryStr]: number } = {
 	country: 0,
 	category: 1,
 	yscale: 2,
+	startdate: 3,
+	enddate: 4
 };
 const svgIDcandle = "svgcandle";
 const summaryUrl = "/data/daily_reports/summary.json";
@@ -362,14 +364,15 @@ class CandleChart {
 
 class Client {
 	private candle: CandleChart;
-	private query: [[QueryStr, string], [QueryStr, NumberStr], [QueryStr, YScaleType]];
+	private query: [QueryStr, string][];
+	private startdate: string;
+	private enddate: string;
 
 	constructor(hash: string = defaultHash) {
-		this.query = [
-			["country", "Japan"],
-			["category", "confirmed"],
-			["yscale", "liner"]
-		];
+		this.startdate = "2020/04/01";
+		this.enddate = "2020/04/10";
+		this.query = [];
+		this.setDefaultQuery();
 		this.loadHash(hash);
 		this.updateHash();
 		this.candle = new CandleChart(svgIDcandle);
@@ -386,7 +389,9 @@ class Client {
 		};
 		httpget(summaryUrl).then(value => {
 			this.candle.addData(value);
-			this.changeCategory();
+			this.change();
+			// 最初のハッシュ構築
+			this.initHash();
 		}).catch(error => {
 			console.error(error);
 		});
@@ -394,56 +399,89 @@ class Client {
 	public dispose(): void {
 		this.candle?.dispose();
 	}
-	public loadHash(hash: string | undefined): void {
+	public setDefaultQuery(): void {
+		this.query = [
+			["country", "Japan"],
+			["category", "confirmed"],
+			["yscale", "liner"],
+			["startdate", this.startdate],
+			["enddate", this.enddate],
+		];
+	}
+	public getQuery(): [QueryStr, string][] {
+		return this.query.map<[QueryStr, string]>(it => [it[0], it[1]]);
+	}
+	public loadHash(hash: string): void {
 		if (!hash) {
 			hash = location.hash;
 		}
+		this.setDefaultQuery();
 		if (hash.indexOf("#") === 0) {
-			hash.slice(1).split("&").forEach(it => {
-				const pair = it.split("=");
-				if (pair.length >= 2) {
-					const qs = pair[0] as QueryStr;
-					if (qs === "country") {
-						this.query[HashIndex[qs]] = [qs, decodeURI(pair[1])];
-					} else {
-						this.query[HashIndex[qs]] = [qs, pair[1]];
-					}
-				}
-			});
+			hash.slice(1)
+				.split("&")
+				.map(it => it.split("="))
+				.filter(it => it.length >= 2)
+				.forEach(it => {
+					const qs = it[0] as QueryStr;
+					this.query[HashIndex[qs]] = [qs, (qs === "country") ? decodeURI(it[1]) : it[1]];
+				});
 		}
-		dispdata.nowcountry = this.query[0][1];
-		dispdata.nowcategory = this.query[1][1];
-		dispdata.nowyscale = this.query[2][1];
+		dispdata.nowcountry = base64encode(this.query[HashIndex["country"]][1]);
+		dispdata.nowcategory = this.query[HashIndex["category"]][1] as NumberStr;
+		dispdata.nowyscale = this.query[HashIndex["yscale"]][1] as YScaleType;
+		dispdata.slider.xaxis.value[0] = this.query[HashIndex["startdate"]][1];
+		dispdata.slider.xaxis.value[1] = this.query[HashIndex["enddate"]][1];
 	}
-	public createHash(): string {
-		return "#" + this.query.map((it, i) => {
-			if (i === HashIndex["country"]) {
-				it[1] = encodeURI(it[1]);
+	public dispdataToQuery(): void {
+		this.query[HashIndex["country"]][1] = base64decode(dispdata.nowcountry);
+		this.query[HashIndex["category"]][1] = dispdata.nowcategory;
+		this.query[HashIndex["yscale"]][1] = dispdata.nowyscale;
+		this.query[HashIndex["startdate"]][1] = dispdata.slider.xaxis.value[0];
+		this.query[HashIndex["enddate"]][1] = dispdata.slider.xaxis.value[1];
+	}
+	public createHash(query?: [QueryStr, string][]): string {
+		if (!query) {
+			query = this.query;
+		}
+		return "#" + query.filter((it, i) => {
+			if (it[0] === "country" && it[1] === "Japan") {
+				return false;
+			} else if (it[0] === "category" && it[1] === "confirmed") {
+				return false;
+			} else if (it[0] === "yscale" && it[1] === "liner") {
+				return false;
+			} else if (it[0] === "startdate" && it[1] === this.startdate) {
+				return false;
+			} else if (it[0] === "enddate" && it[1] === this.enddate) {
+				return false;
+			}
+			return true;
+		}).map(it => {
+			if (it[0] === "country") {
+				return it[0] + "=" + encodeURI(it[1]);
 			}
 			return it.join("=");
 		}).join("&");
 	}
-	public updateHash(): void {
-		const hash = this.createHash();
+	public updateHash(query?: [QueryStr, string][]): void {
+		const hash = this.createHash(query);
 		if (hash !== location.hash) {
 			location.hash = hash;
 		}
+	}
+	private initHash(): void {
+		const data = dispdata.slider.xaxis.data;
+		if (data.length >= 2) {
+			this.startdate = data[0];
+			this.enddate = data[data.length - 1];
+		}
+		this.dispdataToQuery();
+		this.updateHash();
 	}
 	public getLineData(): Readonly<Array<ChartPathData>> {
 		return this.candle.getLineData();
 	}
 	public change(): void {
-		this.candle.clear();
-		this.candle.resetYScale(dispdata.nowyscale);
-		this.candle.changeData(dispdata.nowcategory);
-		this.candle.draw();
-	}
-	public changeCategory(): void {
-		this.candle.clear();
-		this.candle.changeData(dispdata.nowcategory);
-		this.candle.draw();
-	}
-	public changeYScale(): void {
 		this.candle.clear();
 		this.candle.resetYScale(dispdata.nowyscale);
 		this.candle.changeData(dispdata.nowcategory);
@@ -506,16 +544,25 @@ const vm = new Vue({
 	},
 	methods: {
 		categoryChange: () => {
-			cli.changeCategory();
+			const query = cli.getQuery();
+			query[HashIndex["category"]][1] = dispdata.nowcategory;
+			cli.updateHash(query);
 		},
 		yscaleChange: () => {
-			cli.changeYScale();
+			const query = cli.getQuery();
+			query[HashIndex["yscale"]][1] = dispdata.nowyscale;
+			cli.updateHash(query);
 		},
 		countryChange: () => {
-			cli.changeCategory();
+			const query = cli.getQuery();
+			query[HashIndex["country"]][1] = base64decode(dispdata.nowcountry);
+			cli.updateHash(query);
 		},
 		sliderChange: () => {
-			cli.changeCategory();
+			const query = cli.getQuery();
+			query[HashIndex["startdate"]][1] = dispdata.slider.xaxis.value[0];
+			query[HashIndex["enddate"]][1] = dispdata.slider.xaxis.value[1];
+			cli.updateHash(query);
 		}
 	},
 	computed: {
@@ -529,7 +576,6 @@ window.addEventListener("hashchange", () => {
 	cli.loadHash(location.hash);
 	const hash = cli.createHash();
 	if (hash !== oldhash) {
-		cli.updateHash();
 		cli.change();
 	}
 }, false);
