@@ -45,10 +45,10 @@ type Display = {
 	categorys: Array<{ id: NumberStr, name: string }>;
 	yscales: Array<{ id: YScaleType, name: string }>;
 	countrys: Array<{
-		id: string,
-		name: string,
-		data: CDR,
-		checked: boolean
+		id: string;
+		name: string;
+		data: CDR;
+		checked: boolean;
 	}>;
 	slider: {
 		xaxis: {
@@ -75,7 +75,6 @@ const HashIndex: { readonly [key in QueryStr]: number } = {
 };
 const svgIDcandle = "svgcandle";
 const summaryUrl = "/data/daily_reports/summary.json";
-const defaultHash = "#country=Japan&category=confirmed&yscale=liner";
 const timeFormat = d3.timeFormat("%Y/%m/%d");
 const formatNumberConmma = d3.format(",d");
 const candle_xd_default: readonly [Date, Date] = [new Date(2099, 11, 31), new Date(2001, 0, 1)];
@@ -108,7 +107,6 @@ class CandleChart {
 	private svgid: string;
 	private candledata: ChartPathData[];
 	private raw?: WorldSummary;
-	private target: NumberStr;
 	private candlewidth: number;
 
 	constructor(svgid: string) {
@@ -117,7 +115,6 @@ class CandleChart {
 		this.width = div?.offsetWidth ?? 1600;
 		this.height = Math.min(this.width, 720) - this.margin.top - this.margin.bottom;
 		this.width = this.width - this.margin.left - this.margin.right;
-		this.target = dispdata.nowcategory;
 		this.candledata = [];
 		this.candlewidth = 10;
 
@@ -164,7 +161,6 @@ class CandleChart {
 		if (!this.raw) {
 			return;
 		}
-		this.target = target;
 		this.candledata = [];
 
 		const index = NumberIndex[target];
@@ -368,7 +364,7 @@ class Client {
 	private startdate: string;
 	private enddate: string;
 
-	constructor(hash: string = defaultHash) {
+	constructor(hash: string = "") {
 		this.startdate = "2020/04/01";
 		this.enddate = "2020/04/10";
 		this.query = [];
@@ -443,7 +439,7 @@ class Client {
 		if (!query) {
 			query = this.query;
 		}
-		return "#" + query.filter((it, i) => {
+		return "#" + query.filter(it => {
 			if (it[0] === "country" && it[1] === "Japan") {
 				return false;
 			} else if (it[0] === "category" && it[1] === "confirmed") {

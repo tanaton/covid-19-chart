@@ -35,7 +35,8 @@ type Context = {
 }
 
 type NumberStr = "confirmed" | "deaths" | "recovered";
-type YScaleType = "Liner" | "Log";
+type YScaleType = "liner" | "log";
+type QueryStr = "country" | "category" | "yscale" | "startdate" | "enddate";
 
 type Display = {
 	categorys: Array<{ id: NumberStr, name: string }>;
@@ -60,6 +61,13 @@ const NumberIndex: { readonly [key in NumberStr]: number } = {
 	confirmed: 0,
 	deaths: 1,
 	recovered: 2,
+};
+const HashIndex: { readonly [key in QueryStr]: number } = {
+	country: 0,
+	category: 1,
+	yscale: 2,
+	startdate: 3,
+	enddate: 4
 };
 const svgIDLine = "svgline";
 const summaryUrl = "/data/daily_reports/summary.json";
@@ -95,7 +103,6 @@ class LineChart {
 	private svgid: string;
 	private linedata: Array<Context>;
 	private raw?: WorldSummary;
-	private target: NumberStr;
 
 	constructor(svgid: string) {
 		this.svgid = svgid;
@@ -103,7 +110,6 @@ class LineChart {
 		this.width = div?.offsetWidth ?? 1600;
 		this.height = Math.min(this.width, 720) - this.margin.top - this.margin.bottom;
 		this.width = this.width - this.margin.left - this.margin.right;
-		this.target = "confirmed";
 		this.linedata = [];
 
 		this.svg = d3.select("#" + this.svgid).append("svg");
@@ -153,7 +159,6 @@ class LineChart {
 		if (!this.raw) {
 			return;
 		}
-		this.target = target;
 		this.linedata = [];
 
 		const index = NumberIndex[target];
@@ -254,11 +259,11 @@ class LineChart {
 	public resetYScale(scale: YScaleType) {
 		const line_yd = this.line_y.domain();
 		switch (scale) {
-			case "Liner":
+			case "liner":
 				this.line_y = d3.scaleLinear();
 				line_yd[0] = 0;
 				break;
-			case "Log":
+			case "log":
 				this.line_y = d3.scaleLog().clamp(true);
 				line_yd[0] = 1;
 				break;
@@ -322,8 +327,21 @@ class LineChart {
 
 class Client {
 	private line: LineChart;
+	private query: [QueryStr, string][];
+	private startdate: string;
+	private enddate: string;
+	private countrystr: string;
+	private countryIndex: { [country in string]: number };
 
-	constructor() {
+	constructor(hash: string = "") {
+		this.countryIndex = {};
+		this.countrystr = "";
+		this.startdate = "2020/04/01";
+		this.enddate = "2020/04/10";
+		this.query = [];
+		this.setDefaultQuery();
+		this.loadHash(hash);
+		this.updateHash();
 		this.line = new LineChart(svgIDLine);
 	}
 	public run(): void {
@@ -338,7 +356,8 @@ class Client {
 		};
 		httpget(summaryUrl).then(value => {
 			this.line.addData(value);
-			this.changeCategory("confirmed");
+			this.change();
+			this.initHash();
 		}).catch(error => {
 			console.error(error);
 		});
@@ -346,27 +365,111 @@ class Client {
 	public dispose(): void {
 		this.line?.dispose();
 	}
+	public setDefaultQuery(): void {
+		this.query = [
+			["country", this.countrystr],
+			["category", "confirmed"],
+			["yscale", "liner"],
+			["startdate", this.startdate],
+			["enddate", this.enddate],
+		];
+	}
+	public getQuery(): [QueryStr, string][] {
+		return this.query.map<[QueryStr, string]>(it => [it[0], it[1]]);
+	}
+	public loadHash(hash: string): void {
+		if (!hash) {
+			hash = location.hash;
+		}
+		this.setDefaultQuery();
+		if (hash.indexOf("#") === 0) {
+			hash.slice(1)
+				.split("&")
+				.map(it => it.split("="))
+				.filter(it => it.length >= 2)
+				.forEach(it => {
+					const qs = it[0] as QueryStr;
+					this.query[HashIndex[qs]] = [qs, (qs === "country") ? decodeURI(it[1]) : it[1]];
+				});
+		}
+		this.query[HashIndex["country"]][1].split("|").forEach(it => {
+			const country = decodeURI(it);
+			if (this.countryIndex[country] !== undefined) {
+				dispdata.countrys[this.countryIndex[country]].checked = true;
+			}
+		})
+		dispdata.nowcategory = this.query[HashIndex["category"]][1] as NumberStr;
+		dispdata.nowyscale = this.query[HashIndex["yscale"]][1] as YScaleType;
+		dispdata.slider.xaxis.value[0] = this.query[HashIndex["startdate"]][1];
+		dispdata.slider.xaxis.value[1] = this.query[HashIndex["enddate"]][1];
+	}
+	public static countryListStr(): string {
+		return dispdata.countrys.map(it => it.checked ? encodeURI(it.name) : "").filter(it => it !== "").sort().join("|");
+	}
+	public dispdataToQuery(): void {
+		this.query[HashIndex["country"]][1] = Client.countryListStr();
+		this.query[HashIndex["category"]][1] = dispdata.nowcategory;
+		this.query[HashIndex["yscale"]][1] = dispdata.nowyscale;
+		this.query[HashIndex["startdate"]][1] = dispdata.slider.xaxis.value[0];
+		this.query[HashIndex["enddate"]][1] = dispdata.slider.xaxis.value[1];
+	}
+	public createHash(query?: [QueryStr, string][]): string {
+		if (!query) {
+			query = this.query;
+		}
+		return "#" + query.filter(it => {
+			if (it[0] === "country" && it[1] === this.countrystr) {
+				return false;
+			} else if (it[0] === "category" && it[1] === "confirmed") {
+				return false;
+			} else if (it[0] === "yscale" && it[1] === "liner") {
+				return false;
+			} else if (it[0] === "startdate" && it[1] === this.startdate) {
+				return false;
+			} else if (it[0] === "enddate" && it[1] === this.enddate) {
+				return false;
+			}
+			return true;
+		}).map(it => it.join("=")).join("&");
+	}
+	public updateHash(query?: [QueryStr, string][]): void {
+		const hash = this.createHash(query);
+		if (hash !== location.hash) {
+			location.hash = hash;
+		}
+	}
+	private initHash(): void {
+		const data = dispdata.slider.xaxis.data;
+		if (data.length >= 2) {
+			this.startdate = data[0];
+			this.enddate = data[data.length - 1];
+		}
+		this.countryIndex = {};
+		let index = 0;
+		for (const it of dispdata.countrys) {
+			this.countryIndex[it.name] = index;
+			index++;
+		}
+		this.countrystr = Client.countryListStr();
+		this.dispdataToQuery();
+		this.updateHash();
+	}
 	public getLineData(): Readonly<Array<Context>> {
 		return this.line.getLineData();
 	}
-	public changeCategory(cate: NumberStr): void {
+	public change(): void {
 		this.line.clear();
-		this.line.changeData(cate);
-		this.line.draw();
-	}
-	public changeYScale(scale: YScaleType): void {
-		this.line.clear();
-		this.line.resetYScale(scale);
+		this.line.resetYScale(dispdata.nowyscale);
 		this.line.changeData(dispdata.nowcategory);
 		this.line.draw();
 	}
 	public static get(url: string, func: (xhr: XMLHttpRequest) => void, err: (txt: string) => void) {
 		const xhr = new XMLHttpRequest();
-		xhr.ontimeout = (): void => {
+		xhr.ontimeout = () => {
 			console.error(`The request for ${url} timed out.`);
 			err("ontimeout");
 		};
-		xhr.onload = (e): void => {
+		xhr.onload = () => {
 			if (xhr.readyState === 4) {
 				if (xhr.status === 200) {
 					func(xhr);
@@ -375,7 +478,7 @@ class Client {
 				}
 			}
 		};
-		xhr.onerror = (e): void => {
+		xhr.onerror = () => {
 			console.error(xhr.statusText);
 			err("onerror");
 		};
@@ -392,8 +495,8 @@ const dispdata: Display = {
 		{ id: "recovered", name: "回復数" }
 	],
 	yscales: [
-		{ id: "Liner", name: "線形" },
-		{ id: "Log", name: "対数" },
+		{ id: "liner", name: "線形" },
+		{ id: "log", name: "対数" },
 	],
 	countrys: [],
 	slider: {
@@ -403,7 +506,7 @@ const dispdata: Display = {
 		}
 	},
 	nowcategory: "confirmed",
-	nowyscale: "Liner"
+	nowyscale: "liner"
 };
 const vm = new Vue({
 	el: "#container",
@@ -413,25 +516,31 @@ const vm = new Vue({
 	},
 	methods: {
 		categoryChange: () => {
-			cli.changeCategory(dispdata.nowcategory);
+			const query = cli.getQuery();
+			query[HashIndex["category"]][1] = dispdata.nowcategory;
+			cli.updateHash(query);
 		},
 		yscaleChange: () => {
-			cli.changeYScale(dispdata.nowyscale);
+			const query = cli.getQuery();
+			query[HashIndex["yscale"]][1] = dispdata.nowyscale;
+			cli.updateHash(query);
 		},
 		countryChange: () => {
-			cli.changeCategory(dispdata.nowcategory);
+			const query = cli.getQuery();
+			query[HashIndex["country"]][1] = Client.countryListStr();
+			cli.updateHash(query);
 		},
 		countryCheckAllClick: () => {
 			for (const country of dispdata.countrys) {
 				country.checked = true;
 			}
-			cli.changeCategory(dispdata.nowcategory);
+			cli.change();
 		},
 		countryUncheckAllClick: () => {
 			for (const country of dispdata.countrys) {
 				country.checked = false;
 			}
-			cli.changeCategory(dispdata.nowcategory);
+			cli.change();
 		},
 		countryCheckBest10Click: () => {
 			const indexmap: { [key in string]: number } = {};
@@ -449,12 +558,20 @@ const vm = new Vue({
 				const index = indexmap[datalist[i].name];
 				dispdata.countrys[index].checked = true;
 			}
-			cli.changeCategory(dispdata.nowcategory);
+			cli.change();
 		},
 		sliderChange: () => {
-			cli.changeCategory(dispdata.nowcategory);
+			cli.change();
 		}
 	}
 });
-const cli = new Client();
+const cli = new Client(location.hash);
 cli.run();
+window.addEventListener("hashchange", () => {
+	const oldhash = cli.createHash();
+	cli.loadHash(location.hash);
+	const hash = cli.createHash();
+	if (hash !== oldhash) {
+		cli.change();
+	}
+}, false);

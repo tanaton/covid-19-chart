@@ -43,6 +43,7 @@ type HierarchyDatum = {
 }
 
 type NumberStr = "confirmed" | "deaths" | "recovered";
+type QueryStr = "category" | "date";
 
 type Display = {
 	confirmed_now: string;
@@ -61,7 +62,11 @@ type Display = {
 const NumberIndex: { readonly [key in NumberStr]: number } = {
 	confirmed: 0,
 	deaths: 1,
-	recovered: 2,
+	recovered: 2
+};
+const HashIndex: { readonly [key in QueryStr]: number } = {
+	category: 0,
+	date: 1
 };
 const svgIDTreemap = "svgtreemap";
 const summaryUrl = "/data/daily_reports/summary.json";
@@ -71,8 +76,6 @@ const formatNumberConmma = d3.format(",d");
 const formatNumberFloat = d3.format(".2f");
 
 const timeFormat = d3.timeFormat("%Y/%m/%d");
-const base64encode = (str: string): string => window.btoa(unescape(encodeURIComponent(str)));
-const base64decode = (str: string): string => decodeURIComponent(escape(window.atob(str)));
 const atoi = (str: string): number => parseInt(str, 10);
 const strToDate = (str: string): Date => {
 	const datearray = str.split("/").map<number>(atoi);
@@ -88,7 +91,6 @@ class TreemapChart {
 	private svg: d3.Selection<SVGSVGElement, unknown, HTMLElement, unknown>;
 	private svgid: string;
 	private nodes?: HierarchyDatum;
-	private raw?: WorldSummary;
 	private data?: DateSummary;
 	private target: NumberStr;
 	private colorReds: (num: number) => string;
@@ -164,7 +166,6 @@ class TreemapChart {
 		dispdata.recovered_now = formatNumberConmma(this.now.recovered);
 	}
 	public addData(raw: WorldSummary): void {
-		this.raw = raw;
 		this.data = { daily: {} };
 		let daterange: [Date, Date] = [new Date(2099, 0, 1), new Date(2000, 0, 1)];
 
@@ -308,8 +309,15 @@ class TreemapChart {
 
 class Client {
 	private treemap: TreemapChart;
+	private query: [QueryStr, string][];
+	private date: string;
 
-	constructor() {
+	constructor(hash: string = "") {
+		this.date = "2020/04/01";
+		this.query = [];
+		this.setDefaultQuery();
+		this.loadHash(hash);
+		this.updateHash();
 		this.treemap = new TreemapChart(svgIDTreemap);
 	}
 	public run(): void {
@@ -324,7 +332,9 @@ class Client {
 		};
 		httpget(summaryUrl).then(value => {
 			this.treemap.addData(value);
-			this.changeCategory("confirmed");
+			this.change();
+			// 最初のハッシュ構築
+			this.initHash();
 		}).catch(error => {
 			console.error(error);
 		});
@@ -332,18 +342,76 @@ class Client {
 	public dispose(): void {
 		this.treemap?.dispose();
 	}
-	public changeCategory(cate: NumberStr): void {
+	public setDefaultQuery(): void {
+		this.query = [
+			["category", "confirmed"],
+			["date", this.date],
+		];
+	}
+	public getQuery(): [QueryStr, string][] {
+		return this.query.map<[QueryStr, string]>(it => [it[0], it[1]]);
+	}
+	public loadHash(hash: string): void {
+		if (!hash) {
+			hash = location.hash;
+		}
+		this.setDefaultQuery();
+		if (hash.indexOf("#") === 0) {
+			hash.slice(1)
+				.split("&")
+				.map(it => it.split("="))
+				.filter(it => it.length >= 2)
+				.forEach(it => {
+					const qs = it[0] as QueryStr;
+					this.query[HashIndex[qs]] = [qs, it[1]];
+				});
+		}
+		dispdata.nowcategory = this.query[HashIndex["category"]][1] as NumberStr;
+		dispdata.slider.date.value = this.query[HashIndex["date"]][1];
+	}
+	public dispdataToQuery(): void {
+		this.query[HashIndex["category"]][1] = dispdata.nowcategory;
+		this.query[HashIndex["date"]][1] = dispdata.slider.date.value;
+	}
+	public createHash(query?: [QueryStr, string][]): string {
+		if (!query) {
+			query = this.query;
+		}
+		return "#" + query.filter(it => {
+			if (it[0] === "category" && it[1] === "confirmed") {
+				return false;
+			} else if (it[0] === "date" && it[1] === this.date) {
+				return false;
+			}
+			return true;
+		}).map(it => it.join("=")).join("&");
+	}
+	public updateHash(query?: [QueryStr, string][]): void {
+		const hash = this.createHash(query);
+		if (hash !== location.hash) {
+			location.hash = hash;
+		}
+	}
+	private initHash(): void {
+		const data = dispdata.slider.date.data;
+		if (data.length >= 1) {
+			this.date = data[data.length - 1];
+		}
+		this.dispdataToQuery();
+		this.updateHash();
+	}
+	public change(): void {
 		this.treemap.clear();
-		this.treemap.changeData(cate);
+		this.treemap.changeData(dispdata.nowcategory);
 		this.treemap.draw();
 	}
 	public static get(url: string, func: (xhr: XMLHttpRequest) => void, err: (txt: string) => void) {
 		const xhr = new XMLHttpRequest();
-		xhr.ontimeout = (): void => {
+		xhr.ontimeout = () => {
 			console.error(`The request for ${url} timed out.`);
 			err("ontimeout");
 		};
-		xhr.onload = (e): void => {
+		xhr.onload = () => {
 			if (xhr.readyState === 4) {
 				if (xhr.status === 200) {
 					func(xhr);
@@ -352,7 +420,7 @@ class Client {
 				}
 			}
 		};
-		xhr.onerror = (e): void => {
+		xhr.onerror = () => {
 			console.error(xhr.statusText);
 			err("onerror");
 		};
@@ -387,12 +455,24 @@ const vm = new Vue({
 	},
 	methods: {
 		categoryChange: () => {
-			cli.changeCategory(dispdata.nowcategory);
+			const query = cli.getQuery();
+			query[HashIndex["category"]][1] = dispdata.nowcategory;
+			cli.updateHash(query);
 		},
 		sliderChange: () => {
-			cli.changeCategory(dispdata.nowcategory);
+			const query = cli.getQuery();
+			query[HashIndex["date"]][1] = dispdata.slider.date.value;
+			cli.updateHash(query);
 		},
 	}
 });
-const cli = new Client();
+const cli = new Client(location.hash);
 cli.run();
+window.addEventListener("hashchange", () => {
+	const oldhash = cli.createHash();
+	cli.loadHash(location.hash);
+	const hash = cli.createHash();
+	if (hash !== oldhash) {
+		cli.change();
+	}
+}, false);

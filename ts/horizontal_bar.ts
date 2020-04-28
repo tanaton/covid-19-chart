@@ -43,16 +43,12 @@ type ChartDataCountrys = {
 }
 
 type NumberStr = "confirmed" | "deaths" | "recovered";
-type XScaleType = "Liner" | "Log";
+type XScaleType = "liner" | "log";
+type QueryStr = "category" | "rank" | "xscale" | "date";
 
 type Display = {
 	categorys: Array<{ id: NumberStr, name: string }>;
 	xscales: Array<{ id: XScaleType, name: string }>;
-	countrys: Array<{
-		id: string,
-		name: string,
-		checked: boolean
-	}>;
 	slider: {
 		date: {
 			value: string;
@@ -69,6 +65,12 @@ const NumberIndex: { readonly [key in NumberStr]: number } = {
 	confirmed: 0,
 	deaths: 1,
 	recovered: 2,
+};
+const HashIndex: { readonly [key in QueryStr]: number } = {
+	category: 0,
+	rank: 1,
+	xscale: 2,
+	date: 3
 };
 const svgIDhbar = "svghbar";
 const summaryUrl = "/data/daily_reports/summary.json";
@@ -103,7 +105,6 @@ class HorizontalBarChart {
 	private data: ChartDataCountrys;
 	private nowdatestr: string;
 	private raw?: WorldSummary;
-	private target: NumberStr;
 	private barheight: number;
 	private rank: number;
 
@@ -113,7 +114,6 @@ class HorizontalBarChart {
 		this.width = div?.offsetWidth ?? 1600;
 		this.height = Math.min(this.width, 720) - this.margin.top - this.margin.bottom;
 		this.width = this.width - this.margin.left - this.margin.right;
-		this.target = "confirmed";
 		this.hbardata = [];
 		this.data = {};
 		this.nowdatestr = "2020/04/01";
@@ -161,7 +161,6 @@ class HorizontalBarChart {
 		if (!this.raw) {
 			return;
 		}
-		this.target = target;
 		this.hbardata = [];
 
 		const index = NumberIndex[target];
@@ -193,7 +192,6 @@ class HorizontalBarChart {
 	public addData(raw: WorldSummary): void {
 		this.raw = raw;
 		this.data = {};
-		dispdata.countrys = [];
 		const daterange: [Date, Date] = [new Date(2099, 11, 31), new Date(2001, 0, 1)];
 
 		for (const key in raw.countrys) {
@@ -213,11 +211,6 @@ class HorizontalBarChart {
 			if (end.getTime() > daterange[1].getTime()) {
 				daterange[1] = end;
 			}
-			dispdata.countrys.push({
-				id: base64encode(key), // カンマとかスペースとかを適当な文字にする
-				name: key,
-				checked: true
-			});
 			for (const day of daily) {
 				const date = strToDate(day.date);
 				if (this.data[day.date] === undefined) {
@@ -243,11 +236,11 @@ class HorizontalBarChart {
 	public resetXScale(scale: XScaleType) {
 		const xd = this.hbar_x.domain();
 		switch (scale) {
-			case "Liner":
+			case "liner":
 				this.hbar_x = d3.scaleLinear();
 				xd[0] = 0;
 				break;
-			case "Log":
+			case "log":
 				this.hbar_x = d3.scaleLog().clamp(true);
 				xd[0] = 1;
 				break;
@@ -313,8 +306,15 @@ class HorizontalBarChart {
 
 class Client {
 	private hbar: HorizontalBarChart;
+	private query: [QueryStr, string][];
+	private date: string;
 
-	constructor() {
+	constructor(hash: string = "") {
+		this.date = "2020/04/10";
+		this.query = [];
+		this.setDefaultQuery();
+		this.loadHash(hash);
+		this.updateHash();
 		this.hbar = new HorizontalBarChart(svgIDhbar);
 	}
 	public run(): void {
@@ -329,7 +329,8 @@ class Client {
 		};
 		httpget(summaryUrl).then(value => {
 			this.hbar.addData(value);
-			this.changeCategory("confirmed");
+			this.change();
+			this.initHash();
 		}).catch(error => {
 			console.error(error);
 		});
@@ -337,23 +338,81 @@ class Client {
 	public dispose(): void {
 		this.hbar?.dispose();
 	}
+	public setDefaultQuery(): void {
+		this.query = [
+			["category", "confirmed"],
+			["rank", "30"],
+			["xscale", "liner"],
+			["date", this.date]
+		];
+	}
+	public getQuery(): [QueryStr, string][] {
+		return this.query.map<[QueryStr, string]>(it => [it[0], it[1]]);
+	}
+	public loadHash(hash: string): void {
+		if (!hash) {
+			hash = location.hash;
+		}
+		this.setDefaultQuery();
+		if (hash.indexOf("#") === 0) {
+			hash.slice(1)
+				.split("&")
+				.map(it => it.split("="))
+				.filter(it => it.length >= 2)
+				.forEach(it => {
+					const qs = it[0] as QueryStr;
+					this.query[HashIndex[qs]] = [qs, it[1]];
+				});
+		}
+		dispdata.nowcategory = this.query[HashIndex["category"]][1] as NumberStr;
+		dispdata.nowrank = this.query[HashIndex["rank"]][1];
+		dispdata.nowxscale = this.query[HashIndex["xscale"]][1] as XScaleType;
+		dispdata.slider.date.value = this.query[HashIndex["date"]][1];
+	}
+	public dispdataToQuery(): void {
+		this.query[HashIndex["category"]][1] = dispdata.nowcategory;
+		this.query[HashIndex["rank"]][1] = dispdata.nowrank;
+		this.query[HashIndex["xscale"]][1] = dispdata.nowxscale;
+		this.query[HashIndex["date"]][1] = dispdata.slider.date.value;
+	}
+	public createHash(query?: [QueryStr, string][]): string {
+		if (!query) {
+			query = this.query;
+		}
+		return "#" + query.filter(it => {
+			if (it[0] === "category" && it[1] === "confirmed") {
+				return false;
+			} else if (it[0] === "rank" && it[1] === "30") {
+				return false;
+			} else if (it[0] === "xscale" && it[1] === "liner") {
+				return false;
+			} else if (it[0] === "date" && it[1] === this.date) {
+				return false;
+			}
+			return true;
+		}).map(it => it.join("=")).join("&");
+	}
+	public updateHash(query?: [QueryStr, string][]): void {
+		const hash = this.createHash(query);
+		if (hash !== location.hash) {
+			location.hash = hash;
+		}
+	}
+	private initHash(): void {
+		const data = dispdata.slider.date.data;
+		if (data.length >= 1) {
+			this.date = data[data.length - 1];
+		}
+		this.dispdataToQuery();
+		this.updateHash();
+	}
 	public getLineData(): Readonly<Array<ChartPathData>> {
 		return this.hbar.getLineData();
 	}
-	public changeCategory(cate: NumberStr): void {
+	public change(): void {
 		this.hbar.clear();
-		this.hbar.changeData(cate);
-		this.hbar.draw();
-	}
-	public changeXScale(scale: XScaleType): void {
-		this.hbar.clear();
-		this.hbar.resetXScale(scale);
-		this.hbar.changeData(dispdata.nowcategory);
-		this.hbar.draw();
-	}
-	public changeRank(rank: string): void {
-		this.hbar.clear();
-		this.hbar.setRank(rank);
+		this.hbar.setRank(dispdata.nowrank);
+		this.hbar.resetXScale(dispdata.nowxscale);
 		this.hbar.changeData(dispdata.nowcategory);
 		this.hbar.draw();
 	}
@@ -389,10 +448,9 @@ const dispdata: Display = {
 		{ id: "recovered", name: "回復数" }
 	],
 	xscales: [
-		{ id: "Liner", name: "線形" },
-		{ id: "Log", name: "対数" },
+		{ id: "liner", name: "線形" },
+		{ id: "log", name: "対数" },
 	],
-	countrys: [],
 	slider: {
 		date: {
 			value: "2020/04/01",
@@ -406,7 +464,7 @@ const dispdata: Display = {
 		{ id: "rank100", name: "上位100ヶ国", value: "100" },
 	],
 	nowcategory: "confirmed",
-	nowxscale: "Liner",
+	nowxscale: "liner",
 	nowrank: "30",
 };
 const vm = new Vue({
@@ -417,21 +475,34 @@ const vm = new Vue({
 	},
 	methods: {
 		categoryChange: () => {
-			cli.changeCategory(dispdata.nowcategory);
+			const query = cli.getQuery();
+			query[HashIndex["category"]][1] = dispdata.nowcategory;
+			cli.updateHash(query);
 		},
 		xscaleChange: () => {
-			cli.changeXScale(dispdata.nowxscale);
-		},
-		countryChange: () => {
-			cli.changeCategory(dispdata.nowcategory);
+			const query = cli.getQuery();
+			query[HashIndex["xscale"]][1] = dispdata.nowxscale;
+			cli.updateHash(query);
 		},
 		sliderChange: () => {
-			cli.changeCategory(dispdata.nowcategory);
+			const query = cli.getQuery();
+			query[HashIndex["date"]][1] = dispdata.slider.date.value;
+			cli.updateHash(query);
 		},
 		rankChange: () => {
-			cli.changeRank(dispdata.nowrank);
+			const query = cli.getQuery();
+			query[HashIndex["rank"]][1] = dispdata.nowrank;
+			cli.updateHash(query);
 		}
 	}
 });
-const cli = new Client();
+const cli = new Client(location.hash);
 cli.run();
+window.addEventListener("hashchange", () => {
+	const oldhash = cli.createHash();
+	cli.loadHash(location.hash);
+	const hash = cli.createHash();
+	if (hash !== oldhash) {
+		cli.change();
+	}
+}, false);
