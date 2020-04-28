@@ -316,11 +316,10 @@ class Client {
 		this.date = "2020/04/01";
 		this.query = [];
 		this.setDefaultQuery();
-		this.loadHash(hash);
-		this.updateHash();
 		this.treemap = new TreemapChart(svgIDTreemap);
+		this.run(hash);
 	}
-	public run(): void {
+	public run(hash: string = ""): void {
 		const httpget = (url: string): Promise<WorldSummary> => {
 			return new Promise<WorldSummary>((resolve, reject) => {
 				Client.get(url, xhr => {
@@ -332,9 +331,8 @@ class Client {
 		};
 		httpget(summaryUrl).then(value => {
 			this.treemap.addData(value);
+			this.initHash(hash);
 			this.change();
-			// 最初のハッシュ構築
-			this.initHash();
 		}).catch(error => {
 			console.error(error);
 		});
@@ -344,7 +342,7 @@ class Client {
 	}
 	public setDefaultQuery(): void {
 		this.query = [
-			["category", "confirmed"],
+			["category", dispdata.nowcategory],
 			["date", this.date],
 		];
 	}
@@ -369,10 +367,6 @@ class Client {
 		dispdata.nowcategory = this.query[HashIndex["category"]][1] as NumberStr;
 		dispdata.slider.date.value = this.query[HashIndex["date"]][1];
 	}
-	public dispdataToQuery(): void {
-		this.query[HashIndex["category"]][1] = dispdata.nowcategory;
-		this.query[HashIndex["date"]][1] = dispdata.slider.date.value;
-	}
 	public createHash(query?: [QueryStr, string][]): string {
 		if (!query) {
 			query = this.query;
@@ -392,12 +386,12 @@ class Client {
 			location.hash = hash;
 		}
 	}
-	private initHash(): void {
+	private initHash(hash: string = ""): void {
 		const data = dispdata.slider.date.data;
 		if (data.length >= 1) {
 			this.date = data[data.length - 1];
 		}
-		this.dispdataToQuery();
+		this.loadHash(hash);
 		this.updateHash();
 	}
 	public change(): void {
@@ -467,7 +461,6 @@ const vm = new Vue({
 	}
 });
 const cli = new Client(location.hash);
-cli.run();
 window.addEventListener("hashchange", () => {
 	const oldhash = cli.createHash();
 	cli.loadHash(location.hash);

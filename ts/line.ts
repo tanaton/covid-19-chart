@@ -245,7 +245,7 @@ class LineChart {
 					id: base64encode(key), // カンマとかスペースとかを適当な文字にする
 					name: key,
 					data: [cdr[0], cdr[1], cdr[2]],
-					checked: true
+					checked: false
 				});
 			}
 		}
@@ -340,11 +340,10 @@ class Client {
 		this.enddate = "2020/04/10";
 		this.query = [];
 		this.setDefaultQuery();
-		this.loadHash(hash);
-		this.updateHash();
 		this.line = new LineChart(svgIDLine);
+		this.run(hash);
 	}
-	public run(): void {
+	public run(hash: string = ""): void {
 		const httpget = (url: string): Promise<WorldSummary> => {
 			return new Promise<WorldSummary>((resolve, reject) => {
 				Client.get(url, xhr => {
@@ -356,8 +355,8 @@ class Client {
 		};
 		httpget(summaryUrl).then(value => {
 			this.line.addData(value);
+			this.initHash(hash);
 			this.change();
-			this.initHash();
 		}).catch(error => {
 			console.error(error);
 		});
@@ -368,8 +367,8 @@ class Client {
 	public setDefaultQuery(): void {
 		this.query = [
 			["country", this.countrystr],
-			["category", "confirmed"],
-			["yscale", "liner"],
+			["category", dispdata.nowcategory],
+			["yscale", dispdata.nowyscale],
 			["startdate", this.startdate],
 			["enddate", this.enddate],
 		];
@@ -389,7 +388,7 @@ class Client {
 				.filter(it => it.length >= 2)
 				.forEach(it => {
 					const qs = it[0] as QueryStr;
-					this.query[HashIndex[qs]] = [qs, (qs === "country") ? decodeURI(it[1]) : it[1]];
+					this.query[HashIndex[qs]] = [qs, it[1]];
 				});
 		}
 		this.query[HashIndex["country"]][1].split("|").forEach(it => {
@@ -405,13 +404,6 @@ class Client {
 	}
 	public static countryListStr(): string {
 		return dispdata.countrys.map(it => it.checked ? encodeURI(it.name) : "").filter(it => it !== "").sort().join("|");
-	}
-	public dispdataToQuery(): void {
-		this.query[HashIndex["country"]][1] = Client.countryListStr();
-		this.query[HashIndex["category"]][1] = dispdata.nowcategory;
-		this.query[HashIndex["yscale"]][1] = dispdata.nowyscale;
-		this.query[HashIndex["startdate"]][1] = dispdata.slider.xaxis.value[0];
-		this.query[HashIndex["enddate"]][1] = dispdata.slider.xaxis.value[1];
 	}
 	public createHash(query?: [QueryStr, string][]): string {
 		if (!query) {
@@ -438,7 +430,7 @@ class Client {
 			location.hash = hash;
 		}
 	}
-	private initHash(): void {
+	private initHash(hash: string = ""): void {
 		const data = dispdata.slider.xaxis.data;
 		if (data.length >= 2) {
 			this.startdate = data[0];
@@ -450,8 +442,8 @@ class Client {
 			this.countryIndex[it.name] = index;
 			index++;
 		}
-		this.countrystr = Client.countryListStr();
-		this.dispdataToQuery();
+		this.countrystr = dispdata.countrys.map(it => encodeURI(it.name)).sort().join("|");
+		this.loadHash(hash);
 		this.updateHash();
 	}
 	public getLineData(): Readonly<Array<Context>> {
@@ -534,13 +526,17 @@ const vm = new Vue({
 			for (const country of dispdata.countrys) {
 				country.checked = true;
 			}
-			cli.change();
+			const query = cli.getQuery();
+			query[HashIndex["country"]][1] = Client.countryListStr();
+			cli.updateHash(query);
 		},
 		countryUncheckAllClick: () => {
 			for (const country of dispdata.countrys) {
 				country.checked = false;
 			}
-			cli.change();
+			const query = cli.getQuery();
+			query[HashIndex["country"]][1] = "";
+			cli.updateHash(query);
 		},
 		countryCheckBest10Click: () => {
 			const indexmap: { [key in string]: number } = {};
@@ -558,15 +554,19 @@ const vm = new Vue({
 				const index = indexmap[datalist[i].name];
 				dispdata.countrys[index].checked = true;
 			}
-			cli.change();
+			const query = cli.getQuery();
+			query[HashIndex["country"]][1] = Client.countryListStr();
+			cli.updateHash(query);
 		},
 		sliderChange: () => {
-			cli.change();
+			const query = cli.getQuery();
+			query[HashIndex["startdate"]][1] = dispdata.slider.xaxis.value[0];
+			query[HashIndex["enddate"]][1] = dispdata.slider.xaxis.value[1];
+			cli.updateHash(query);
 		}
 	}
 });
 const cli = new Client(location.hash);
-cli.run();
 window.addEventListener("hashchange", () => {
 	const oldhash = cli.createHash();
 	cli.loadHash(location.hash);

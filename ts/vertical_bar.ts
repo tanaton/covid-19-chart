@@ -305,11 +305,10 @@ class Client {
 		this.enddate = "2020/04/10";
 		this.query = [];
 		this.setDefaultQuery();
-		this.loadHash(hash);
-		this.updateHash();
 		this.vbar = new VerticalBarChart(svgIDvbar);
+		this.run(hash);
 	}
-	public run(): void {
+	public run(hash: string = ""): void {
 		const httpget = (url: string): Promise<WorldSummary> => {
 			return new Promise<WorldSummary>((resolve, reject) => {
 				Client.get(url, xhr => {
@@ -321,8 +320,8 @@ class Client {
 		};
 		httpget(summaryUrl).then(value => {
 			this.vbar.addData(value);
+			this.initHash(hash);
 			this.change();
-			this.initHash();
 		}).catch(error => {
 			console.error(error);
 		});
@@ -332,9 +331,9 @@ class Client {
 	}
 	public setDefaultQuery(): void {
 		this.query = [
-			["country", "Japan"],
-			["category", "confirmed"],
-			["yscale", "liner"],
+			["country", base64decode(dispdata.nowcountry)],
+			["category", dispdata.nowcategory],
+			["yscale", dispdata.nowyscale],
 			["startdate", this.startdate],
 			["enddate", this.enddate],
 		];
@@ -362,13 +361,6 @@ class Client {
 		dispdata.nowyscale = this.query[HashIndex["yscale"]][1] as YScaleType;
 		dispdata.slider.xaxis.value[0] = this.query[HashIndex["startdate"]][1];
 		dispdata.slider.xaxis.value[1] = this.query[HashIndex["enddate"]][1];
-	}
-	public dispdataToQuery(): void {
-		this.query[HashIndex["country"]][1] = base64decode(dispdata.nowcountry);
-		this.query[HashIndex["category"]][1] = dispdata.nowcategory;
-		this.query[HashIndex["yscale"]][1] = dispdata.nowyscale;
-		this.query[HashIndex["startdate"]][1] = dispdata.slider.xaxis.value[0];
-		this.query[HashIndex["enddate"]][1] = dispdata.slider.xaxis.value[1];
 	}
 	public createHash(query?: [QueryStr, string][]): string {
 		if (!query) {
@@ -400,13 +392,13 @@ class Client {
 			location.hash = hash;
 		}
 	}
-	private initHash(): void {
+	private initHash(hash: string = ""): void {
 		const data = dispdata.slider.xaxis.data;
 		if (data.length >= 2) {
 			this.startdate = data[0];
 			this.enddate = data[data.length - 1];
 		}
-		this.dispdataToQuery();
+		this.loadHash(hash);
 		this.updateHash();
 	}
 	public getLineData(): Readonly<Array<ChartPathData>> {
@@ -501,7 +493,6 @@ const vm = new Vue({
 	}
 });
 const cli = new Client(location.hash);
-cli.run();
 window.addEventListener("hashchange", () => {
 	const oldhash = cli.createHash();
 	cli.loadHash(location.hash);

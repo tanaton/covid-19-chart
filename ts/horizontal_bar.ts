@@ -313,11 +313,10 @@ class Client {
 		this.date = "2020/04/10";
 		this.query = [];
 		this.setDefaultQuery();
-		this.loadHash(hash);
-		this.updateHash();
 		this.hbar = new HorizontalBarChart(svgIDhbar);
+		this.run(hash);
 	}
-	public run(): void {
+	public run(hash: string = ""): void {
 		const httpget = (url: string): Promise<WorldSummary> => {
 			return new Promise<WorldSummary>((resolve, reject) => {
 				Client.get(url, xhr => {
@@ -329,8 +328,8 @@ class Client {
 		};
 		httpget(summaryUrl).then(value => {
 			this.hbar.addData(value);
+			this.initHash(hash);
 			this.change();
-			this.initHash();
 		}).catch(error => {
 			console.error(error);
 		});
@@ -340,9 +339,9 @@ class Client {
 	}
 	public setDefaultQuery(): void {
 		this.query = [
-			["category", "confirmed"],
-			["rank", "30"],
-			["xscale", "liner"],
+			["category", dispdata.nowcategory],
+			["rank", dispdata.nowrank],
+			["xscale", dispdata.nowxscale],
 			["date", this.date]
 		];
 	}
@@ -369,12 +368,6 @@ class Client {
 		dispdata.nowxscale = this.query[HashIndex["xscale"]][1] as XScaleType;
 		dispdata.slider.date.value = this.query[HashIndex["date"]][1];
 	}
-	public dispdataToQuery(): void {
-		this.query[HashIndex["category"]][1] = dispdata.nowcategory;
-		this.query[HashIndex["rank"]][1] = dispdata.nowrank;
-		this.query[HashIndex["xscale"]][1] = dispdata.nowxscale;
-		this.query[HashIndex["date"]][1] = dispdata.slider.date.value;
-	}
 	public createHash(query?: [QueryStr, string][]): string {
 		if (!query) {
 			query = this.query;
@@ -398,12 +391,12 @@ class Client {
 			location.hash = hash;
 		}
 	}
-	private initHash(): void {
+	private initHash(hash: string = ""): void {
 		const data = dispdata.slider.date.data;
 		if (data.length >= 1) {
 			this.date = data[data.length - 1];
 		}
-		this.dispdataToQuery();
+		this.loadHash(hash);
 		this.updateHash();
 	}
 	public getLineData(): Readonly<Array<ChartPathData>> {
@@ -497,7 +490,6 @@ const vm = new Vue({
 	}
 });
 const cli = new Client(location.hash);
-cli.run();
 window.addEventListener("hashchange", () => {
 	const oldhash = cli.createHash();
 	cli.loadHash(location.hash);
