@@ -1,28 +1,8 @@
 import * as d3 from 'd3';
 import Vue from 'vue';
 import VueSlider from 'vue-slider-component';
-
-type Box = {
-	readonly top: number;
-	readonly right: number;
-	readonly bottom: number;
-	readonly left: number;
-}
-
-type CDR = [number, number, number];
-
-type DatasetSimple = {
-	date: string,
-	cdr: CDR
-}
-type CountrySummary = {
-	daily: DatasetSimple[],
-	cdr: CDR
-}
-type WorldSummary = {
-	countrys: { [key in string]: CountrySummary },
-	cdr: CDR
-}
+import * as chart from "./lib/chart";
+import * as client from "./lib/client";
 
 type ChartPathData = {
 	date: Date;
@@ -34,17 +14,16 @@ type Context = {
 	values: ChartPathData[];
 }
 
-type NumberStr = "confirmed" | "deaths" | "recovered";
 type YScaleType = "liner" | "log";
 type QueryStr = "country" | "category" | "yscale" | "startdate" | "enddate";
 
 type Display = {
-	categorys: Array<{ id: NumberStr, name: string }>;
+	categorys: Array<{ id: chart.NumberStr, name: string }>;
 	yscales: Array<{ id: YScaleType, name: string }>;
 	countrys: Array<{
 		id: string,
 		name: string,
-		data: CDR,
+		data: chart.CDR,
 		checked: boolean
 	}>;
 	slider: {
@@ -53,15 +32,10 @@ type Display = {
 			data: string[];
 		};
 	};
-	nowcategory: NumberStr;
+	nowcategory: chart.NumberStr;
 	nowyscale: YScaleType;
 }
 
-const NumberIndex: { readonly [key in NumberStr]: number } = {
-	confirmed: 0,
-	deaths: 1,
-	recovered: 2,
-};
 const HashIndex: { readonly [key in QueryStr]: number } = {
 	country: 0,
 	category: 1,
@@ -70,25 +44,10 @@ const HashIndex: { readonly [key in QueryStr]: number } = {
 	enddate: 4
 };
 const svgIDLine = "svgline";
-const summaryUrl = "/data/daily_reports/summary.json";
-const timeFormat = d3.timeFormat("%Y/%m/%d");
-const formatNumberConmma = d3.format(",d");
 const line_xd_default: readonly [Date, Date] = [new Date(2099, 11, 31), new Date(2001, 0, 1)];
 const line_yd_default: readonly [number, number] = [0, 0];
-const base64encode = (str: string): string => window.btoa(unescape(encodeURIComponent(str)));
-const base64decode = (str: string): string => decodeURIComponent(escape(window.atob(str)));
-const atoi = (str: string): number => parseInt(str, 10);
-const strToDate = (str: string): Date => {
-	const datearray = str.split("/").map<number>(atoi);
-	// 月は-1しないと期待通りに動作しない
-	return new Date(datearray[0], datearray[1] - 1, datearray[2]);
-}
 
-class LineChart {
-	private readonly margin: Box = { top: 10, right: 10, bottom: 20, left: 60 };
-	private width: number;
-	private height: number;
-
+class LineChart extends chart.BaseChart<YScaleType> implements chart.IChart<YScaleType> {
 	private line?: d3.Selection<SVGGElement, Context, SVGSVGElement, unknown>;
 	private line_x: d3.ScaleTime<number, number>;
 	private line_y: d3.ScaleLinear<number, number> | d3.ScaleLogarithmic<number, number>;
@@ -99,23 +58,12 @@ class LineChart {
 	private line_color: d3.ScaleOrdinal<string, string>;
 	private line_path_stroke: (d: { name: string }) => string;
 
-	private svg: d3.Selection<SVGSVGElement, unknown, HTMLElement, unknown>;
-	private svgid: string;
 	private linedata: Array<Context>;
-	private raw?: WorldSummary;
+	private raw?: chart.WorldSummary;
 
 	constructor(svgid: string) {
-		this.svgid = svgid;
-		const div = document.getElementById(this.svgid);
-		this.width = div?.offsetWidth ?? 1600;
-		this.height = Math.min(this.width, 720) - this.margin.top - this.margin.bottom;
-		this.width = this.width - this.margin.left - this.margin.right;
+		super(svgid);
 		this.linedata = [];
-
-		this.svg = d3.select("#" + this.svgid).append("svg");
-		this.svg
-			.attr("width", this.width + this.margin.left + this.margin.right + 10)
-			.attr("height", this.height + this.margin.top + this.margin.bottom + 10);
 
 		this.line_x = d3.scaleTime()
 			.domain(line_xd_default.concat())
@@ -125,7 +73,7 @@ class LineChart {
 			.range([this.height, 0]);
 		this.line_xAxis = d3.axisBottom<Date>(this.line_x)
 			.tickSizeInner(-this.height)
-			.tickFormat(timeFormat)
+			.tickFormat(chart.timeFormat)
 			.tickPadding(7)
 			.ticks(5);
 		this.line_yAxis = d3.axisLeft<number>(this.line_y)
@@ -143,30 +91,18 @@ class LineChart {
 		this.line_color = d3.scaleOrdinal(d3.schemeCategory10);
 		this.line_path_stroke = d => this.line_color(d.name);
 	}
-	public dispose(): void {
-		const doc = document.getElementById(this.svgid);
-		if (doc) {
-			doc.innerHTML = "";
-		}
-	}
-	public clear(): void {
-		this.svg.selectAll("g").remove();
-	}
-	public getLineData(): Readonly<Array<Context>> {
-		return this.linedata.concat();
-	}
-	public changeData(target: NumberStr): void {
+	public changeData(target: chart.NumberStr): void {
 		if (!this.raw) {
 			return;
 		}
 		this.linedata = [];
 
-		const index = NumberIndex[target];
+		const index = chart.NumberIndex[target];
 		const countrys = this.raw.countrys;
 		const line_yd = this.line_y.domain();
 		const line_xd = [
-			strToDate(dispdata.slider.xaxis.value[0]),
-			strToDate(dispdata.slider.xaxis.value[1])
+			chart.strToDate(dispdata.slider.xaxis.value[0]),
+			chart.strToDate(dispdata.slider.xaxis.value[1])
 		];
 		line_yd[1] = line_yd_default[1];
 
@@ -199,7 +135,7 @@ class LineChart {
 				values: []
 			};
 			for (const it of countrys[key].daily) {
-				const date = strToDate(it.date);
+				const date = chart.strToDate(it.date);
 				if (date.getTime() < line_xd[0].getTime() || date.getTime() > line_xd[1].getTime()) {
 					continue;
 				}
@@ -220,7 +156,7 @@ class LineChart {
 		this.line_y.domain(line_yd);
 		this.line_y.nice();
 	}
-	public addData(raw: WorldSummary): void {
+	public addData(raw: chart.WorldSummary): void {
 		this.raw = raw;
 		dispdata.countrys = [];
 		const line_xd = line_xd_default.concat();
@@ -231,9 +167,9 @@ class LineChart {
 			}
 			const daily = raw.countrys[key].daily;
 			if (daily && daily.length > 0) {
-				const start = strToDate(daily[0].date);
+				const start = chart.strToDate(daily[0].date);
 				const last = daily[daily.length - 1];
-				const end = strToDate(last.date);
+				const end = chart.strToDate(last.date);
 				if (start.getTime() < line_xd[0].getTime()) {
 					line_xd[0] = start;
 				}
@@ -242,21 +178,21 @@ class LineChart {
 				}
 				const cdr = last.cdr;
 				dispdata.countrys.push({
-					id: base64encode(key), // カンマとかスペースとかを適当な文字にする
+					id: chart.base64encode(key), // カンマとかスペースとかを適当な文字にする
 					name: key,
 					data: [cdr[0], cdr[1], cdr[2]],
 					checked: false
 				});
 			}
 		}
-		dispdata.slider.xaxis.value = [timeFormat(line_xd[0]), timeFormat(line_xd[1])];
+		dispdata.slider.xaxis.value = [chart.timeFormat(line_xd[0]), chart.timeFormat(line_xd[1])];
 		let date: Date = new Date(line_xd[0].getTime());
 		while (date <= line_xd[1]) {
-			dispdata.slider.xaxis.data.push(timeFormat(date));
+			dispdata.slider.xaxis.data.push(chart.timeFormat(date));
 			date = new Date(date.getTime() + 60 * 60 * 24 * 1000);
 		}
 	}
-	public resetYScale(scale: YScaleType) {
+	public resetScale(scale: YScaleType): void {
 		const line_yd = this.line_y.domain();
 		switch (scale) {
 			case "liner":
@@ -278,7 +214,7 @@ class LineChart {
 
 		this.line_yAxis = d3.axisLeft<number>(this.line_y)
 			.tickSizeInner(-this.width)
-			.tickFormat(formatNumberConmma)
+			.tickFormat(chart.formatNumberConmma)
 			.tickPadding(7)
 			.ticks(5);
 	}
@@ -325,44 +261,20 @@ class LineChart {
 	}
 }
 
-class Client {
-	private line: LineChart;
-	private query: [QueryStr, string][];
+class Client extends client.BaseClient<QueryStr, YScaleType> implements client.IClient<QueryStr> {
 	private startdate: string;
 	private enddate: string;
 	private countrystr: string;
 	private countryIndex: { [country in string]: number };
 
 	constructor(hash: string = "") {
+		super(new LineChart(svgIDLine));
 		this.countryIndex = {};
 		this.countrystr = "";
-		this.startdate = "2020/04/01";
-		this.enddate = "2020/04/10";
-		this.query = [];
+		this.startdate = "20200401";
+		this.enddate = "20200410";
 		this.setDefaultQuery();
-		this.line = new LineChart(svgIDLine);
 		this.run(hash);
-	}
-	public run(hash: string = ""): void {
-		const httpget = (url: string): Promise<WorldSummary> => {
-			return new Promise<WorldSummary>((resolve, reject) => {
-				Client.get(url, xhr => {
-					resolve(JSON.parse(xhr.responseText));
-				}, (txt: string) => {
-					reject(txt);
-				});
-			});
-		};
-		httpget(summaryUrl).then(value => {
-			this.line.addData(value);
-			this.initHash(hash);
-			this.change();
-		}).catch(error => {
-			console.error(error);
-		});
-	}
-	public dispose(): void {
-		this.line?.dispose();
 	}
 	public setDefaultQuery(): void {
 		this.query = [
@@ -373,23 +285,15 @@ class Client {
 			["enddate", this.enddate],
 		];
 	}
-	public getQuery(): [QueryStr, string][] {
-		return this.query.map<[QueryStr, string]>(it => [it[0], it[1]]);
-	}
 	public loadHash(hash: string): void {
 		if (!hash) {
-			hash = location.hash;
+			hash = location.search;
 		}
 		this.setDefaultQuery();
-		if (hash.indexOf("#") === 0) {
-			hash.slice(1)
-				.split("&")
-				.map(it => it.split("="))
-				.filter(it => it.length >= 2)
-				.forEach(it => {
-					const qs = it[0] as QueryStr;
-					this.query[HashIndex[qs]] = [qs, it[1]];
-				});
+		const url = new URLSearchParams(hash);
+		for (const [key, value] of url) {
+			const qs = key as QueryStr;
+			this.query[HashIndex[qs]] = [qs, value];
 		}
 		this.query[HashIndex["country"]][1].split("|").forEach(it => {
 			const country = decodeURI(it);
@@ -397,19 +301,21 @@ class Client {
 				dispdata.countrys[this.countryIndex[country]].checked = true;
 			}
 		})
-		dispdata.nowcategory = this.query[HashIndex["category"]][1] as NumberStr;
+		dispdata.nowcategory = this.query[HashIndex["category"]][1] as chart.NumberStr;
 		dispdata.nowyscale = this.query[HashIndex["yscale"]][1] as YScaleType;
-		dispdata.slider.xaxis.value[0] = this.query[HashIndex["startdate"]][1];
-		dispdata.slider.xaxis.value[1] = this.query[HashIndex["enddate"]][1];
+		dispdata.slider.xaxis.value = [
+			this.query[HashIndex["startdate"]][1],
+			this.query[HashIndex["enddate"]][1]
+		];
 	}
 	public static countryListStr(): string {
-		return dispdata.countrys.map(it => it.checked ? encodeURI(it.name) : "").filter(it => it !== "").sort().join("|");
+		return dispdata.countrys.filter(it => it.checked).map(it => it.name).sort().join("|");
 	}
 	public createHash(query?: [QueryStr, string][]): string {
 		if (!query) {
 			query = this.query;
 		}
-		return "#" + query.filter(it => {
+		const q = query.filter(it => {
 			if (it[0] === "country" && it[1] === this.countrystr) {
 				return false;
 			} else if (it[0] === "category" && it[1] === "confirmed") {
@@ -422,15 +328,15 @@ class Client {
 				return false;
 			}
 			return true;
-		}).map(it => it.join("=")).join("&");
-	}
-	public updateHash(query?: [QueryStr, string][]): void {
-		const hash = this.createHash(query);
-		if (hash !== location.hash) {
-			location.hash = hash;
+		});
+		const url = new URLSearchParams();
+		for (const it of q) {
+			url.append(it[0], it[1]);
 		}
+		const hash = url.toString();
+		return hash !== "" ? "?" + hash : "";
 	}
-	private initHash(hash: string = ""): void {
+	public initHash(hash: string = ""): void {
 		const data = dispdata.slider.xaxis.data;
 		if (data.length >= 2) {
 			this.startdate = data[0];
@@ -442,41 +348,15 @@ class Client {
 			this.countryIndex[it.name] = index;
 			index++;
 		}
-		this.countrystr = dispdata.countrys.map(it => encodeURI(it.name)).sort().join("|");
+		this.countrystr = dispdata.countrys.map(it => it.name).sort().join("|");
 		this.loadHash(hash);
 		this.updateHash();
 	}
-	public getLineData(): Readonly<Array<Context>> {
-		return this.line.getLineData();
-	}
 	public change(): void {
-		this.line.clear();
-		this.line.resetYScale(dispdata.nowyscale);
-		this.line.changeData(dispdata.nowcategory);
-		this.line.draw();
-	}
-	public static get(url: string, func: (xhr: XMLHttpRequest) => void, err: (txt: string) => void) {
-		const xhr = new XMLHttpRequest();
-		xhr.ontimeout = () => {
-			console.error(`The request for ${url} timed out.`);
-			err("ontimeout");
-		};
-		xhr.onload = () => {
-			if (xhr.readyState === 4) {
-				if (xhr.status === 200) {
-					func(xhr);
-				} else {
-					console.error(xhr.statusText);
-				}
-			}
-		};
-		xhr.onerror = () => {
-			console.error(xhr.statusText);
-			err("onerror");
-		};
-		xhr.open("GET", url, true);
-		xhr.timeout = 5000;		// 5秒
-		xhr.send(null);
+		this.chart.clear();
+		this.chart.resetScale(dispdata.nowyscale);
+		this.chart.changeData(dispdata.nowcategory);
+		this.chart.draw();
 	}
 }
 
@@ -547,7 +427,7 @@ const vm = new Vue({
 				cindex++;
 			}
 			const datalist = dispdata.countrys.concat();
-			const target = NumberIndex[dispdata.nowcategory];
+			const target = chart.NumberIndex[dispdata.nowcategory];
 			datalist.sort((a, b) => b.data[target] - a.data[target]);
 			const len = Math.min(datalist.length, 10);
 			for (let i = 0; i < len; i++) {
@@ -566,12 +446,4 @@ const vm = new Vue({
 		}
 	}
 });
-const cli = new Client(location.hash);
-window.addEventListener("hashchange", () => {
-	const oldhash = cli.createHash();
-	cli.loadHash(location.hash);
-	const hash = cli.createHash();
-	if (hash !== oldhash) {
-		cli.change();
-	}
-}, false);
+const cli = new Client(location.search);

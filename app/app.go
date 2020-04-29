@@ -68,7 +68,7 @@ func (ts Unixtime) MarshalBinary() ([]byte, error) {
 type TimeDaily time.Time
 
 func (t TimeDaily) MarshalJSON() ([]byte, error) {
-	return []byte(`"` + time.Time(t).Format("2006/01/02") + `"`), nil
+	return []byte(`"` + time.Time(t).Format("20060102") + `"`), nil
 }
 
 type Dataset struct {

@@ -1,34 +1,14 @@
 import * as d3 from 'd3';
 import Vue from 'vue';
 import VueSlider from 'vue-slider-component';
-
-type Box = {
-	readonly top: number;
-	readonly right: number;
-	readonly bottom: number;
-	readonly left: number;
-}
-
-type CDR = [number, number, number];
-
-type DatasetSimple = {
-	date: string;
-	cdr: CDR;
-}
-type CountrySummary = {
-	daily: DatasetSimple[];
-	cdr: CDR;
-}
-type WorldSummary = {
-	countrys: { [key in string]: CountrySummary };
-	cdr: CDR;
-}
+import * as chart from "./lib/chart";
+import * as client from "./lib/client";
 
 type DateSummary = {
 	daily: {
 		[datestr in string]: {
 			countrys: { [country in string]: {
-				cdr: CDR;
+				cdr: chart.CDR;
 				active: [number, number];
 			} };
 		};
@@ -42,68 +22,39 @@ type HierarchyDatum = {
 	children?: HierarchyDatum[];
 }
 
-type NumberStr = "confirmed" | "deaths" | "recovered";
 type QueryStr = "category" | "date";
 
 type Display = {
 	confirmed_now: string;
 	deaths_now: string;
 	recovered_now: string;
-	categorys: Array<{ id: NumberStr, name: string }>;
+	categorys: Array<{ id: chart.NumberStr, name: string }>;
 	slider: {
 		date: {
 			value: string;
 			data: string[];
 		};
 	};
-	nowcategory: NumberStr;
+	nowcategory: chart.NumberStr;
 }
 
-const NumberIndex: { readonly [key in NumberStr]: number } = {
-	confirmed: 0,
-	deaths: 1,
-	recovered: 2
-};
 const HashIndex: { readonly [key in QueryStr]: number } = {
 	category: 0,
 	date: 1
 };
 const svgIDTreemap = "svgtreemap";
-const summaryUrl = "/data/daily_reports/summary.json";
 
-const formatNumberSuffix = d3.format(",.3s");
-const formatNumberConmma = d3.format(",d");
-const formatNumberFloat = d3.format(".2f");
-
-const timeFormat = d3.timeFormat("%Y/%m/%d");
-const atoi = (str: string): number => parseInt(str, 10);
-const strToDate = (str: string): Date => {
-	const datearray = str.split("/").map<number>(atoi);
-	// 月は-1しないと期待通りに動作しない
-	return new Date(datearray[0], datearray[1] - 1, datearray[2]);
-}
-
-class TreemapChart {
-	private readonly margin: Box = { top: 10, right: 10, bottom: 20, left: 60 };
-	private width: number;
-	private height: number;
-
-	private svg: d3.Selection<SVGSVGElement, unknown, HTMLElement, unknown>;
-	private svgid: string;
+class TreemapChart extends chart.BaseChart<unknown> implements chart.IChart<unknown> {
 	private nodes?: HierarchyDatum;
 	private data?: DateSummary;
-	private target: NumberStr;
+	private target: chart.NumberStr;
 	private colorReds: (num: number) => string;
 	private colorGreens: (num: number) => string;
-	private now: { [key in NumberStr]: number };
+	private now: { [key in chart.NumberStr]: number };
 	private nowdatestr: string;
 
 	constructor(svgid: string) {
-		this.svgid = svgid;
-		const div = document.getElementById(this.svgid);
-		this.width = div?.offsetWidth ?? 1600;
-		this.height = Math.min(this.width, 720) - this.margin.top - this.margin.bottom;
-		this.width = this.width - this.margin.left - this.margin.right;
+		super(svgid);
 		this.colorReds = d3.interpolate("lightpink", "red");
 		this.colorGreens = d3.interpolate("lightgreen", "green");
 		this.target = "confirmed";
@@ -112,23 +63,9 @@ class TreemapChart {
 			deaths: 0,
 			recovered: 0
 		};
-		this.nowdatestr = "2020/04/01";
-
-		this.svg = d3.select("#" + this.svgid).append("svg");
-		this.svg
-			.attr("width", this.width + this.margin.left + this.margin.right + 10)
-			.attr("height", this.height + this.margin.top + this.margin.bottom + 10);
+		this.nowdatestr = "20200401";
 	}
-	public dispose(): void {
-		const doc = document.getElementById(this.svgid);
-		if (doc) {
-			doc.innerHTML = "";
-		}
-	}
-	public clear(): void {
-		this.svg.selectAll("g").remove();
-	}
-	public changeData(target: NumberStr): void {
+	public changeData(target: chart.NumberStr): void {
 		if (!this.data || !this.data.daily) {
 			return;
 		}
@@ -138,13 +75,12 @@ class TreemapChart {
 			children: []
 		};
 		this.target = target;
-		dispdata.nowcategory = target;
 		this.now = {
 			confirmed: 0,
 			deaths: 0,
 			recovered: 0,
 		};
-		const index = NumberIndex[target];
+		const index = chart.NumberIndex[target];
 		const datestr = dispdata.slider.date.value;
 		const day = (this.data.daily[datestr] !== undefined) ? this.data.daily[datestr] : this.data.daily[this.nowdatestr];
 		for (const key in day.countrys) {
@@ -161,11 +97,11 @@ class TreemapChart {
 			this.now.deaths += country.cdr[1];
 			this.now.recovered += country.cdr[2];
 		}
-		dispdata.confirmed_now = formatNumberConmma(this.now.confirmed);
-		dispdata.deaths_now = formatNumberConmma(this.now.deaths);
-		dispdata.recovered_now = formatNumberConmma(this.now.recovered);
+		dispdata.confirmed_now = chart.formatNumberConmma(this.now.confirmed);
+		dispdata.deaths_now = chart.formatNumberConmma(this.now.deaths);
+		dispdata.recovered_now = chart.formatNumberConmma(this.now.recovered);
 	}
-	public addData(raw: WorldSummary): void {
+	public addData(raw: chart.WorldSummary): void {
 		this.data = { daily: {} };
 		let daterange: [Date, Date] = [new Date(2099, 0, 1), new Date(2000, 0, 1)];
 
@@ -179,7 +115,7 @@ class TreemapChart {
 			}
 			let olddate: string = "";
 			for (const day of daily) {
-				const date = strToDate(day.date);
+				const date = chart.strToDate(day.date);
 				if (this.data.daily[day.date] === undefined) {
 					this.data.daily[day.date] = {
 						countrys: {}
@@ -208,11 +144,11 @@ class TreemapChart {
 				olddate = day.date;
 			}
 		}
-		this.nowdatestr = timeFormat(daterange[1]);
+		this.nowdatestr = chart.timeFormat(daterange[1]);
 		dispdata.slider.date.value = this.nowdatestr;
 		let date: Date = new Date(daterange[0].getTime());
 		while (date <= daterange[1]) {
-			dispdata.slider.date.data.push(timeFormat(date));
+			dispdata.slider.date.data.push(chart.timeFormat(date));
 			date = new Date(date.getTime() + 60 * 60 * 24 * 1000);
 		}
 	}
@@ -246,7 +182,7 @@ class TreemapChart {
 				return "";
 			}
 			const p = 100 - ((active[1] / active[0]) * 100);
-			return p > 0 ? `▼${formatNumberFloat(p)}%` : `▲${formatNumberFloat(p)}%`;
+			return p > 0 ? `▼${chart.formatNumberFloat(p)}%` : `▲${chart.formatNumberFloat(p)}%`;
 		}
 		const textdata = (d: d3.HierarchyRectangularNode<HierarchyDatum>): Array<{ name: string, size: number }> => {
 			if (d.data.value < visiblemin) {
@@ -257,7 +193,7 @@ class TreemapChart {
 				name: d.data.name,
 				size: size
 			}, {
-				name: formatNumberSuffix(d.data.value),
+				name: chart.formatNumberSuffix(d.data.value),
 				size: size
 			}];
 			const per = percent(d.data.active);
@@ -303,42 +239,18 @@ class TreemapChart {
 			.text(d => d.name);
 
 		leaf.append("title")
-			.text(d => `${d.data.name}\n${formatNumberConmma(d.data.value)}`);
+			.text(d => `${d.data.name}\n${chart.formatNumberConmma(d.data.value)}`);
 	}
 }
 
-class Client {
-	private treemap: TreemapChart;
-	private query: [QueryStr, string][];
+class Client extends client.BaseClient<QueryStr, unknown> implements client.IClient<QueryStr> {
 	private date: string;
 
 	constructor(hash: string = "") {
-		this.date = "2020/04/01";
-		this.query = [];
+		super(new TreemapChart(svgIDTreemap));
+		this.date = "20200401";
 		this.setDefaultQuery();
-		this.treemap = new TreemapChart(svgIDTreemap);
 		this.run(hash);
-	}
-	public run(hash: string = ""): void {
-		const httpget = (url: string): Promise<WorldSummary> => {
-			return new Promise<WorldSummary>((resolve, reject) => {
-				Client.get(url, xhr => {
-					resolve(JSON.parse(xhr.responseText));
-				}, (txt: string) => {
-					reject(txt);
-				});
-			});
-		};
-		httpget(summaryUrl).then(value => {
-			this.treemap.addData(value);
-			this.initHash(hash);
-			this.change();
-		}).catch(error => {
-			console.error(error);
-		});
-	}
-	public dispose(): void {
-		this.treemap?.dispose();
 	}
 	public setDefaultQuery(): void {
 		this.query = [
@@ -346,47 +258,39 @@ class Client {
 			["date", this.date],
 		];
 	}
-	public getQuery(): [QueryStr, string][] {
-		return this.query.map<[QueryStr, string]>(it => [it[0], it[1]]);
-	}
 	public loadHash(hash: string): void {
 		if (!hash) {
-			hash = location.hash;
+			hash = location.search;
 		}
 		this.setDefaultQuery();
-		if (hash.indexOf("#") === 0) {
-			hash.slice(1)
-				.split("&")
-				.map(it => it.split("="))
-				.filter(it => it.length >= 2)
-				.forEach(it => {
-					const qs = it[0] as QueryStr;
-					this.query[HashIndex[qs]] = [qs, it[1]];
-				});
+		const url = new URLSearchParams(hash);
+		for (const [key, value] of url) {
+			const qs = key as QueryStr;
+			this.query[HashIndex[qs]] = [qs, value];
 		}
-		dispdata.nowcategory = this.query[HashIndex["category"]][1] as NumberStr;
+		dispdata.nowcategory = this.query[HashIndex["category"]][1] as chart.NumberStr;
 		dispdata.slider.date.value = this.query[HashIndex["date"]][1];
 	}
 	public createHash(query?: [QueryStr, string][]): string {
 		if (!query) {
 			query = this.query;
 		}
-		return "#" + query.filter(it => {
+		const q = query.filter(it => {
 			if (it[0] === "category" && it[1] === "confirmed") {
 				return false;
 			} else if (it[0] === "date" && it[1] === this.date) {
 				return false;
 			}
 			return true;
-		}).map(it => it.join("=")).join("&");
-	}
-	public updateHash(query?: [QueryStr, string][]): void {
-		const hash = this.createHash(query);
-		if (hash !== location.hash) {
-			location.hash = hash;
+		});
+		const url = new URLSearchParams();
+		for (const it of q) {
+			url.append(it[0], it[1]);
 		}
+		const hash = url.toString();
+		return hash !== "" ? "?" + hash : "";
 	}
-	private initHash(hash: string = ""): void {
+	public initHash(hash: string = ""): void {
 		const data = dispdata.slider.date.data;
 		if (data.length >= 1) {
 			this.date = data[data.length - 1];
@@ -395,32 +299,9 @@ class Client {
 		this.updateHash();
 	}
 	public change(): void {
-		this.treemap.clear();
-		this.treemap.changeData(dispdata.nowcategory);
-		this.treemap.draw();
-	}
-	public static get(url: string, func: (xhr: XMLHttpRequest) => void, err: (txt: string) => void) {
-		const xhr = new XMLHttpRequest();
-		xhr.ontimeout = () => {
-			console.error(`The request for ${url} timed out.`);
-			err("ontimeout");
-		};
-		xhr.onload = () => {
-			if (xhr.readyState === 4) {
-				if (xhr.status === 200) {
-					func(xhr);
-				} else {
-					console.error(xhr.statusText);
-				}
-			}
-		};
-		xhr.onerror = () => {
-			console.error(xhr.statusText);
-			err("onerror");
-		};
-		xhr.open("GET", url, true);
-		xhr.timeout = 5000;		// 5秒
-		xhr.send(null);
+		this.chart.clear();
+		this.chart.changeData(dispdata.nowcategory);
+		this.chart.draw();
 	}
 }
 
@@ -435,7 +316,7 @@ const dispdata: Display = {
 	],
 	slider: {
 		date: {
-			value: "2020/04/01",
+			value: "20200401",
 			data: []
 		}
 	},
@@ -460,12 +341,4 @@ const vm = new Vue({
 		},
 	}
 });
-const cli = new Client(location.hash);
-window.addEventListener("hashchange", () => {
-	const oldhash = cli.createHash();
-	cli.loadHash(location.hash);
-	const hash = cli.createHash();
-	if (hash !== oldhash) {
-		cli.change();
-	}
-}, false);
+const cli = new Client(location.search);

@@ -1,29 +1,8 @@
 import * as d3 from 'd3';
 import Vue from 'vue';
 import VueSlider from 'vue-slider-component';
-import { thresholdFreedmanDiaconis } from 'd3';
-
-type Box = {
-	readonly top: number;
-	readonly right: number;
-	readonly bottom: number;
-	readonly left: number;
-}
-
-type CDR = [number, number, number];
-
-type DatasetSimple = {
-	date: string,
-	cdr: CDR
-}
-type CountrySummary = {
-	daily: DatasetSimple[],
-	cdr: CDR
-}
-type WorldSummary = {
-	countrys: { [key in string]: CountrySummary },
-	cdr: CDR
-}
+import * as chart from "./lib/chart";
+import * as client from "./lib/client";
 
 type ChartPathData = {
 	name: string;
@@ -32,7 +11,7 @@ type ChartPathData = {
 
 type ChartDataCountry = {
 	name: string;
-	cdr: CDR;
+	cdr: chart.CDR;
 }
 
 type ChartDataCountrys = {
@@ -42,12 +21,11 @@ type ChartDataCountrys = {
 	}
 }
 
-type NumberStr = "confirmed" | "deaths" | "recovered";
 type XScaleType = "liner" | "log";
 type QueryStr = "category" | "rank" | "xscale" | "date";
 
 type Display = {
-	categorys: Array<{ id: NumberStr, name: string }>;
+	categorys: Array<{ id: chart.NumberStr, name: string }>;
 	xscales: Array<{ id: XScaleType, name: string }>;
 	slider: {
 		date: {
@@ -56,16 +34,11 @@ type Display = {
 		};
 	};
 	ranks: Array<{ id: string, name: string, value: string }>;
-	nowcategory: NumberStr;
+	nowcategory: chart.NumberStr;
 	nowxscale: XScaleType;
 	nowrank: string;
 }
 
-const NumberIndex: { readonly [key in NumberStr]: number } = {
-	confirmed: 0,
-	deaths: 1,
-	recovered: 2,
-};
 const HashIndex: { readonly [key in QueryStr]: number } = {
 	category: 0,
 	rank: 1,
@@ -73,25 +46,10 @@ const HashIndex: { readonly [key in QueryStr]: number } = {
 	date: 3
 };
 const svgIDhbar = "svghbar";
-const summaryUrl = "/data/daily_reports/summary.json";
-const timeFormat = d3.timeFormat("%Y/%m/%d");
-const formatNumberConmma = d3.format(",d");
 const line_xd_default: readonly [number, number] = [0, 0];
 const line_yd_default: readonly [number, number] = [0, 0];
-const base64encode = (str: string): string => window.btoa(unescape(encodeURIComponent(str)));
-const base64decode = (str: string): string => decodeURIComponent(escape(window.atob(str)));
-const atoi = (str: string): number => parseInt(str, 10);
-const strToDate = (str: string): Date => {
-	const datearray = str.split("/").map<number>(atoi);
-	// 月は-1しないと期待通りに動作しない
-	return new Date(datearray[0], datearray[1] - 1, datearray[2]);
-}
 
-class HorizontalBarChart {
-	private readonly margin: Box = { top: 10, right: 10, bottom: 20, left: 60 };
-	private width: number;
-	private height: number;
-
+class HorizontalBarChart extends chart.BaseChart<XScaleType> implements chart.IChart<XScaleType> {
 	private hbar?: d3.Selection<SVGGElement, ChartPathData, SVGSVGElement, unknown>;
 	private hbar_x: d3.ScaleLinear<number, number> | d3.ScaleLogarithmic<number, number>;
 	private hbar_y: d3.ScaleLinear<number, number> | d3.ScaleLogarithmic<number, number>;
@@ -99,31 +57,20 @@ class HorizontalBarChart {
 	private hbar_yAxis: d3.Axis<number>;
 	private hbar_color: d3.ScaleOrdinal<string, string>;
 
-	private svg: d3.Selection<SVGSVGElement, unknown, HTMLElement, unknown>;
-	private svgid: string;
 	private hbardata: Array<ChartPathData>;
 	private data: ChartDataCountrys;
 	private nowdatestr: string;
-	private raw?: WorldSummary;
+	private raw?: chart.WorldSummary;
 	private barheight: number;
 	private rank: number;
 
 	constructor(svgid: string) {
-		this.svgid = svgid;
-		const div = document.getElementById(this.svgid);
-		this.width = div?.offsetWidth ?? 1600;
-		this.height = Math.min(this.width, 720) - this.margin.top - this.margin.bottom;
-		this.width = this.width - this.margin.left - this.margin.right;
+		super(svgid);
 		this.hbardata = [];
 		this.data = {};
-		this.nowdatestr = "2020/04/01";
+		this.nowdatestr = "20200401";
 		this.barheight = 10;
 		this.rank = 30;
-
-		this.svg = d3.select("#" + this.svgid).append("svg");
-		this.svg
-			.attr("width", this.width + this.margin.left + this.margin.right + 10)
-			.attr("height", this.height + this.margin.top + this.margin.bottom + 10);
 
 		this.hbar_x = d3.scaleLinear()
 			.domain(line_xd_default.concat())
@@ -142,33 +89,19 @@ class HorizontalBarChart {
 
 		this.hbar_color = d3.scaleOrdinal(d3.schemeCategory10);
 	}
-	public dispose(): void {
-		const doc = document.getElementById(this.svgid);
-		if (doc) {
-			doc.innerHTML = "";
-		}
-	}
-	public clear(): void {
-		this.svg.selectAll("g").remove();
-	}
-	public getLineData(): Readonly<Array<ChartPathData>> {
-		return this.hbardata.concat();
-	}
-	public setRank(rank: string) {
-		this.rank = atoi(rank);
-	}
-	public changeData(target: NumberStr): void {
+	public changeData(target: chart.NumberStr): void {
 		if (!this.raw) {
 			return;
 		}
 		this.hbardata = [];
 
-		const index = NumberIndex[target];
+		const index = chart.NumberIndex[target];
 		const datestr = dispdata.slider.date.value;
 		const data = (this.data[datestr] !== undefined) ? this.data[datestr] : this.data[this.nowdatestr];
 		const xd = [8_000_000_000, -8_000_000_000];
 
 		data.values.sort((a, b) => b.cdr[index] - a.cdr[index]);
+		this.rank = chart.atoi(dispdata.nowrank);
 		const len = Math.min(data.values.length, this.rank);
 		for (let i = 0; i < len; i++) {
 			const it = data.values[i];
@@ -189,7 +122,7 @@ class HorizontalBarChart {
 		this.hbar_x.nice();
 		this.hbar_y.domain([len, 0]);
 	}
-	public addData(raw: WorldSummary): void {
+	public addData(raw: chart.WorldSummary): void {
 		this.raw = raw;
 		this.data = {};
 		const daterange: [Date, Date] = [new Date(2099, 11, 31), new Date(2001, 0, 1)];
@@ -202,9 +135,9 @@ class HorizontalBarChart {
 			if (!daily || daily.length <= 0) {
 				continue;
 			}
-			const start = strToDate(daily[0].date);
+			const start = chart.strToDate(daily[0].date);
 			const last = daily[daily.length - 1];
-			const end = strToDate(last.date);
+			const end = chart.strToDate(last.date);
 			if (start.getTime() < daterange[0].getTime()) {
 				daterange[0] = start;
 			}
@@ -212,7 +145,7 @@ class HorizontalBarChart {
 				daterange[1] = end;
 			}
 			for (const day of daily) {
-				const date = strToDate(day.date);
+				const date = chart.strToDate(day.date);
 				if (this.data[day.date] === undefined) {
 					this.data[day.date] = {
 						date: date,
@@ -225,15 +158,15 @@ class HorizontalBarChart {
 				});
 			}
 		}
-		this.nowdatestr = timeFormat(daterange[1]);
+		this.nowdatestr = chart.timeFormat(daterange[1]);
 		dispdata.slider.date.value = this.nowdatestr;
 		let date: Date = new Date(daterange[0].getTime());
 		while (date <= daterange[1]) {
-			dispdata.slider.date.data.push(timeFormat(date));
+			dispdata.slider.date.data.push(chart.timeFormat(date));
 			date = new Date(date.getTime() + 60 * 60 * 24 * 1000);
 		}
 	}
-	public resetXScale(scale: XScaleType) {
+	public resetScale(scale: XScaleType) {
 		const xd = this.hbar_x.domain();
 		switch (scale) {
 			case "liner":
@@ -255,7 +188,7 @@ class HorizontalBarChart {
 
 		this.hbar_xAxis = d3.axisBottom<number>(this.hbar_x)
 			.tickSizeInner(-this.height)
-			.tickFormat(formatNumberConmma)
+			.tickFormat(chart.formatNumberConmma)
 			.tickPadding(7)
 			.ticks(5);
 	}
@@ -290,7 +223,7 @@ class HorizontalBarChart {
 			.text((d, i) => `${i + 1}. ${d.name}`);
 
 		this.hbar.append("title")
-			.text((d, i) => `country:${d.name}\nrank:${i + 1}\ndata:${formatNumberConmma(d.data)}`);
+			.text((d, i) => `country:${d.name}\nrank:${i + 1}\ndata:${chart.formatNumberConmma(d.data)}`);
 
 		this.svg.append("g")				// 全体x目盛軸
 			.attr("class", "x axis")
@@ -304,38 +237,14 @@ class HorizontalBarChart {
 	}
 }
 
-class Client {
-	private hbar: HorizontalBarChart;
-	private query: [QueryStr, string][];
+class Client extends client.BaseClient<QueryStr, XScaleType> implements client.IClient<QueryStr> {
 	private date: string;
 
 	constructor(hash: string = "") {
-		this.date = "2020/04/10";
-		this.query = [];
+		super(new HorizontalBarChart(svgIDhbar));
+		this.date = "20200410";
 		this.setDefaultQuery();
-		this.hbar = new HorizontalBarChart(svgIDhbar);
 		this.run(hash);
-	}
-	public run(hash: string = ""): void {
-		const httpget = (url: string): Promise<WorldSummary> => {
-			return new Promise<WorldSummary>((resolve, reject) => {
-				Client.get(url, xhr => {
-					resolve(JSON.parse(xhr.responseText));
-				}, (txt: string) => {
-					reject(txt);
-				});
-			});
-		};
-		httpget(summaryUrl).then(value => {
-			this.hbar.addData(value);
-			this.initHash(hash);
-			this.change();
-		}).catch(error => {
-			console.error(error);
-		});
-	}
-	public dispose(): void {
-		this.hbar?.dispose();
 	}
 	public setDefaultQuery(): void {
 		this.query = [
@@ -345,25 +254,17 @@ class Client {
 			["date", this.date]
 		];
 	}
-	public getQuery(): [QueryStr, string][] {
-		return this.query.map<[QueryStr, string]>(it => [it[0], it[1]]);
-	}
 	public loadHash(hash: string): void {
 		if (!hash) {
-			hash = location.hash;
+			hash = location.search;
 		}
 		this.setDefaultQuery();
-		if (hash.indexOf("#") === 0) {
-			hash.slice(1)
-				.split("&")
-				.map(it => it.split("="))
-				.filter(it => it.length >= 2)
-				.forEach(it => {
-					const qs = it[0] as QueryStr;
-					this.query[HashIndex[qs]] = [qs, it[1]];
-				});
+		const url = new URLSearchParams(hash);
+		for (const [key, value] of url) {
+			const qs = key as QueryStr;
+			this.query[HashIndex[qs]] = [qs, value];
 		}
-		dispdata.nowcategory = this.query[HashIndex["category"]][1] as NumberStr;
+		dispdata.nowcategory = this.query[HashIndex["category"]][1] as chart.NumberStr;
 		dispdata.nowrank = this.query[HashIndex["rank"]][1];
 		dispdata.nowxscale = this.query[HashIndex["xscale"]][1] as XScaleType;
 		dispdata.slider.date.value = this.query[HashIndex["date"]][1];
@@ -372,7 +273,7 @@ class Client {
 		if (!query) {
 			query = this.query;
 		}
-		return "#" + query.filter(it => {
+		const q = query.filter(it => {
 			if (it[0] === "category" && it[1] === "confirmed") {
 				return false;
 			} else if (it[0] === "rank" && it[1] === "30") {
@@ -383,15 +284,15 @@ class Client {
 				return false;
 			}
 			return true;
-		}).map(it => it.join("=")).join("&");
-	}
-	public updateHash(query?: [QueryStr, string][]): void {
-		const hash = this.createHash(query);
-		if (hash !== location.hash) {
-			location.hash = hash;
+		});
+		const url = new URLSearchParams();
+		for (const it of q) {
+			url.append(it[0], it[1]);
 		}
+		const hash = url.toString();
+		return hash !== "" ? "?" + hash : "";
 	}
-	private initHash(hash: string = ""): void {
+	public initHash(hash: string = ""): void {
 		const data = dispdata.slider.date.data;
 		if (data.length >= 1) {
 			this.date = data[data.length - 1];
@@ -399,38 +300,11 @@ class Client {
 		this.loadHash(hash);
 		this.updateHash();
 	}
-	public getLineData(): Readonly<Array<ChartPathData>> {
-		return this.hbar.getLineData();
-	}
 	public change(): void {
-		this.hbar.clear();
-		this.hbar.setRank(dispdata.nowrank);
-		this.hbar.resetXScale(dispdata.nowxscale);
-		this.hbar.changeData(dispdata.nowcategory);
-		this.hbar.draw();
-	}
-	public static get(url: string, func: (xhr: XMLHttpRequest) => void, err: (txt: string) => void) {
-		const xhr = new XMLHttpRequest();
-		xhr.ontimeout = (): void => {
-			console.error(`The request for ${url} timed out.`);
-			err("ontimeout");
-		};
-		xhr.onload = (e): void => {
-			if (xhr.readyState === 4) {
-				if (xhr.status === 200) {
-					func(xhr);
-				} else {
-					console.error(xhr.statusText);
-				}
-			}
-		};
-		xhr.onerror = (e): void => {
-			console.error(xhr.statusText);
-			err("onerror");
-		};
-		xhr.open("GET", url, true);
-		xhr.timeout = 5000;		// 5秒
-		xhr.send(null);
+		this.chart.clear();
+		this.chart.resetScale(dispdata.nowxscale);
+		this.chart.changeData(dispdata.nowcategory);
+		this.chart.draw();
 	}
 }
 
@@ -446,7 +320,7 @@ const dispdata: Display = {
 	],
 	slider: {
 		date: {
-			value: "2020/04/01",
+			value: "20200401",
 			data: []
 		}
 	},
@@ -489,12 +363,4 @@ const vm = new Vue({
 		}
 	}
 });
-const cli = new Client(location.hash);
-window.addEventListener("hashchange", () => {
-	const oldhash = cli.createHash();
-	cli.loadHash(location.hash);
-	const hash = cli.createHash();
-	if (hash !== oldhash) {
-		cli.change();
-	}
-}, false);
+const cli = new Client(location.search);
