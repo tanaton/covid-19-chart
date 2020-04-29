@@ -3,14 +3,14 @@ import * as chart from "./chart"
 const summaryUrl = "/data/daily_reports/summary.json";
 
 export interface IClient<QueryStrT> {
-	run(hash: string): void;
+	run(query: string): void;
 	dispose(): void;
 	setDefaultQuery(): void;
 	getQuery(): [QueryStrT, string][];
-	initHash(hash: string): void;
-	loadHash(hash: string): void;
-	createHash(query?: [QueryStrT, string][]): string;
-	updateHash(query?: [QueryStrT, string][]): void;
+	initQuery(query: string): void;
+	loadQuery(query: string): void;
+	createQuery(query?: [QueryStrT, string][]): string;
+	updateQuery(query?: [QueryStrT, string][]): void;
 	change(): void;
 }
 
@@ -23,7 +23,7 @@ export abstract class BaseClient<QueryStrT, ScaleT> implements IClient<QueryStrT
 		this.chart = c;
 		window.addEventListener("popstate", () => this.updatePage(), false);
 	}
-	public run(hash: string = ""): void {
+	public run(query: string = ""): void {
 		const httpget = (url: string): Promise<chart.WorldSummary> => {
 			return new Promise<chart.WorldSummary>((resolve, reject) => {
 				BaseClient.get(url, xhr => {
@@ -35,7 +35,7 @@ export abstract class BaseClient<QueryStrT, ScaleT> implements IClient<QueryStrT
 		};
 		httpget(summaryUrl).then(value => {
 			this.chart.addData(value);
-			this.initHash(hash);
+			this.initQuery(query);
 			this.change();
 		}).catch(error => {
 			console.error(error);
@@ -48,21 +48,21 @@ export abstract class BaseClient<QueryStrT, ScaleT> implements IClient<QueryStrT
 	public getQuery(): [QueryStrT, string][] {
 		return this.query.map<[QueryStrT, string]>(it => [it[0], it[1]]);
 	}
-	public abstract initHash(hash: string): void;
-	public abstract loadHash(hash: string): void;
-	public abstract createHash(query?: [QueryStrT, string][]): string;
-	public updateHash(query?: [QueryStrT, string][]): void {
-		const hash = this.createHash(query);
-		if (hash !== location.search) {
-			window.history.pushState("", "", location.pathname + hash);
+	public abstract initQuery(query: string): void;
+	public abstract loadQuery(query: string): void;
+	public abstract createQuery(query?: [QueryStrT, string][]): string;
+	public updateQuery(queryList?: [QueryStrT, string][]): void {
+		const query = this.createQuery(queryList);
+		if (query !== location.search) {
+			window.history.pushState("", "", location.pathname + query);
 			this.updatePage();
 		}
 	}
 	private updatePage(): void {
-		const oldhash = this.createHash();
-		this.loadHash(location.search);
-		const nowhash = this.createHash();
-		if (nowhash !== oldhash) {
+		const oldquery = this.createQuery();
+		this.loadQuery(location.search);
+		const nowquery = this.createQuery();
+		if (nowquery !== oldquery) {
 			this.change();
 		}
 	}

@@ -36,7 +36,7 @@ type Display = {
 	nowyscale: YScaleType;
 }
 
-const HashIndex: { readonly [key in QueryStr]: number } = {
+const QueryIndex: { readonly [key in QueryStr]: number } = {
 	country: 0,
 	category: 1,
 	yscale: 2,
@@ -267,14 +267,14 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 	private countrystr: string;
 	private countryIndex: { [country in string]: number };
 
-	constructor(hash: string = "") {
+	constructor(query: string = "") {
 		super(new LineChart(svgIDLine));
 		this.countryIndex = {};
 		this.countrystr = "";
 		this.startdate = "20200401";
 		this.enddate = "20200410";
 		this.setDefaultQuery();
-		this.run(hash);
+		this.run(query);
 	}
 	public setDefaultQuery(): void {
 		this.query = [
@@ -285,37 +285,37 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 			["enddate", this.enddate],
 		];
 	}
-	public loadHash(hash: string): void {
-		if (!hash) {
-			hash = location.search;
+	public loadQuery(query: string): void {
+		if (!query) {
+			query = location.search;
 		}
 		this.setDefaultQuery();
-		const url = new URLSearchParams(hash);
+		const url = new URLSearchParams(query);
 		for (const [key, value] of url) {
 			const qs = key as QueryStr;
-			this.query[HashIndex[qs]] = [qs, value];
+			this.query[QueryIndex[qs]] = [qs, value];
 		}
-		this.query[HashIndex["country"]][1].split("|").forEach(it => {
+		this.query[QueryIndex["country"]][1].split("|").forEach(it => {
 			const country = decodeURI(it);
 			if (this.countryIndex[country] !== undefined) {
 				dispdata.countrys[this.countryIndex[country]].checked = true;
 			}
 		})
-		dispdata.nowcategory = this.query[HashIndex["category"]][1] as chart.NumberStr;
-		dispdata.nowyscale = this.query[HashIndex["yscale"]][1] as YScaleType;
+		dispdata.nowcategory = this.query[QueryIndex["category"]][1] as chart.NumberStr;
+		dispdata.nowyscale = this.query[QueryIndex["yscale"]][1] as YScaleType;
 		dispdata.slider.xaxis.value = [
-			this.query[HashIndex["startdate"]][1],
-			this.query[HashIndex["enddate"]][1]
+			this.query[QueryIndex["startdate"]][1],
+			this.query[QueryIndex["enddate"]][1]
 		];
 	}
 	public static countryListStr(): string {
 		return dispdata.countrys.filter(it => it.checked).map(it => it.name).sort().join("|");
 	}
-	public createHash(query?: [QueryStr, string][]): string {
-		if (!query) {
-			query = this.query;
+	public createQuery(querylist?: [QueryStr, string][]): string {
+		if (!querylist) {
+			querylist = this.query;
 		}
-		const q = query.filter(it => {
+		const q = querylist.filter(it => {
 			if (it[0] === "country" && it[1] === this.countrystr) {
 				return false;
 			} else if (it[0] === "category" && it[1] === "confirmed") {
@@ -333,10 +333,10 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 		for (const it of q) {
 			url.append(it[0], it[1]);
 		}
-		const hash = url.toString();
-		return hash !== "" ? "?" + hash : "";
+		const query = url.toString();
+		return query !== "" ? "?" + query : "";
 	}
-	public initHash(hash: string = ""): void {
+	public initQuery(query: string = ""): void {
 		const data = dispdata.slider.xaxis.data;
 		if (data.length >= 2) {
 			this.startdate = data[0];
@@ -349,8 +349,8 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 			index++;
 		}
 		this.countrystr = dispdata.countrys.map(it => it.name).sort().join("|");
-		this.loadHash(hash);
-		this.updateHash();
+		this.loadQuery(query);
+		this.updateQuery();
 	}
 	public change(): void {
 		this.chart.clear();
@@ -389,34 +389,34 @@ const vm = new Vue({
 	methods: {
 		categoryChange: () => {
 			const query = cli.getQuery();
-			query[HashIndex["category"]][1] = dispdata.nowcategory;
-			cli.updateHash(query);
+			query[QueryIndex["category"]][1] = dispdata.nowcategory;
+			cli.updateQuery(query);
 		},
 		yscaleChange: () => {
 			const query = cli.getQuery();
-			query[HashIndex["yscale"]][1] = dispdata.nowyscale;
-			cli.updateHash(query);
+			query[QueryIndex["yscale"]][1] = dispdata.nowyscale;
+			cli.updateQuery(query);
 		},
 		countryChange: () => {
 			const query = cli.getQuery();
-			query[HashIndex["country"]][1] = Client.countryListStr();
-			cli.updateHash(query);
+			query[QueryIndex["country"]][1] = Client.countryListStr();
+			cli.updateQuery(query);
 		},
 		countryCheckAllClick: () => {
 			for (const country of dispdata.countrys) {
 				country.checked = true;
 			}
 			const query = cli.getQuery();
-			query[HashIndex["country"]][1] = Client.countryListStr();
-			cli.updateHash(query);
+			query[QueryIndex["country"]][1] = Client.countryListStr();
+			cli.updateQuery(query);
 		},
 		countryUncheckAllClick: () => {
 			for (const country of dispdata.countrys) {
 				country.checked = false;
 			}
 			const query = cli.getQuery();
-			query[HashIndex["country"]][1] = "";
-			cli.updateHash(query);
+			query[QueryIndex["country"]][1] = "";
+			cli.updateQuery(query);
 		},
 		countryCheckBest10Click: () => {
 			const indexmap: { [key in string]: number } = {};
@@ -435,14 +435,14 @@ const vm = new Vue({
 				dispdata.countrys[index].checked = true;
 			}
 			const query = cli.getQuery();
-			query[HashIndex["country"]][1] = Client.countryListStr();
-			cli.updateHash(query);
+			query[QueryIndex["country"]][1] = Client.countryListStr();
+			cli.updateQuery(query);
 		},
 		sliderChange: () => {
 			const query = cli.getQuery();
-			query[HashIndex["startdate"]][1] = dispdata.slider.xaxis.value[0];
-			query[HashIndex["enddate"]][1] = dispdata.slider.xaxis.value[1];
-			cli.updateHash(query);
+			query[QueryIndex["startdate"]][1] = dispdata.slider.xaxis.value[0];
+			query[QueryIndex["enddate"]][1] = dispdata.slider.xaxis.value[1];
+			cli.updateQuery(query);
 		}
 	}
 });

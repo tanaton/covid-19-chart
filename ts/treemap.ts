@@ -38,7 +38,7 @@ type Display = {
 	nowcategory: chart.NumberStr;
 }
 
-const HashIndex: { readonly [key in QueryStr]: number } = {
+const QueryIndex: { readonly [key in QueryStr]: number } = {
 	category: 0,
 	date: 1
 };
@@ -246,11 +246,11 @@ class TreemapChart extends chart.BaseChart<unknown> implements chart.IChart<unkn
 class Client extends client.BaseClient<QueryStr, unknown> implements client.IClient<QueryStr> {
 	private date: string;
 
-	constructor(hash: string = "") {
+	constructor(query: string = "") {
 		super(new TreemapChart(svgIDTreemap));
 		this.date = "20200401";
 		this.setDefaultQuery();
-		this.run(hash);
+		this.run(query);
 	}
 	public setDefaultQuery(): void {
 		this.query = [
@@ -258,24 +258,24 @@ class Client extends client.BaseClient<QueryStr, unknown> implements client.ICli
 			["date", this.date],
 		];
 	}
-	public loadHash(hash: string): void {
-		if (!hash) {
-			hash = location.search;
+	public loadQuery(query: string): void {
+		if (!query) {
+			query = location.search;
 		}
 		this.setDefaultQuery();
-		const url = new URLSearchParams(hash);
+		const url = new URLSearchParams(query);
 		for (const [key, value] of url) {
 			const qs = key as QueryStr;
-			this.query[HashIndex[qs]] = [qs, value];
+			this.query[QueryIndex[qs]] = [qs, value];
 		}
-		dispdata.nowcategory = this.query[HashIndex["category"]][1] as chart.NumberStr;
-		dispdata.slider.date.value = this.query[HashIndex["date"]][1];
+		dispdata.nowcategory = this.query[QueryIndex["category"]][1] as chart.NumberStr;
+		dispdata.slider.date.value = this.query[QueryIndex["date"]][1];
 	}
-	public createHash(query?: [QueryStr, string][]): string {
-		if (!query) {
-			query = this.query;
+	public createQuery(querylist?: [QueryStr, string][]): string {
+		if (!querylist) {
+			querylist = this.query;
 		}
-		const q = query.filter(it => {
+		const q = querylist.filter(it => {
 			if (it[0] === "category" && it[1] === "confirmed") {
 				return false;
 			} else if (it[0] === "date" && it[1] === this.date) {
@@ -287,16 +287,16 @@ class Client extends client.BaseClient<QueryStr, unknown> implements client.ICli
 		for (const it of q) {
 			url.append(it[0], it[1]);
 		}
-		const hash = url.toString();
-		return hash !== "" ? "?" + hash : "";
+		const query = url.toString();
+		return query !== "" ? "?" + query : "";
 	}
-	public initHash(hash: string = ""): void {
+	public initQuery(query: string = ""): void {
 		const data = dispdata.slider.date.data;
 		if (data.length >= 1) {
 			this.date = data[data.length - 1];
 		}
-		this.loadHash(hash);
-		this.updateHash();
+		this.loadQuery(query);
+		this.updateQuery();
 	}
 	public change(): void {
 		this.chart.clear();
@@ -331,13 +331,13 @@ const vm = new Vue({
 	methods: {
 		categoryChange: () => {
 			const query = cli.getQuery();
-			query[HashIndex["category"]][1] = dispdata.nowcategory;
-			cli.updateHash(query);
+			query[QueryIndex["category"]][1] = dispdata.nowcategory;
+			cli.updateQuery(query);
 		},
 		sliderChange: () => {
 			const query = cli.getQuery();
-			query[HashIndex["date"]][1] = dispdata.slider.date.value;
-			cli.updateHash(query);
+			query[QueryIndex["date"]][1] = dispdata.slider.date.value;
+			cli.updateQuery(query);
 		},
 	}
 });
