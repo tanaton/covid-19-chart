@@ -14,7 +14,7 @@ type Context = {
 	values: ChartPathData[];
 }
 
-type YScaleType = "liner" | "log";
+type YScaleType = chart.ScaleStr;
 type QueryStr = "country" | "category" | "yscale" | "startdate" | "enddate";
 
 type Display = {
@@ -88,7 +88,7 @@ class LineChart extends chart.BaseChart<YScaleType> implements chart.IChart<YSca
 			.y(d => this.line_y(d.data));
 		this.line_path_d = d => this.line_line(d.values);
 
-		this.line_color = d3.scaleOrdinal(d3.schemeCategory10);
+		this.line_color = d3.scaleOrdinal(chart.metroColor);
 		this.line_path_stroke = d => this.line_color(d.name);
 	}
 	public changeData(target: chart.NumberStr): void {
@@ -160,11 +160,13 @@ class LineChart extends chart.BaseChart<YScaleType> implements chart.IChart<YSca
 		this.raw = raw;
 		dispdata.countrys = [];
 		const line_xd = line_xd_default.concat();
+		const clist: string[] = [];
 
 		for (const key in raw.countrys) {
 			if (!raw.countrys.hasOwnProperty(key)) {
 				continue;
 			}
+			clist.push(key);
 			const daily = raw.countrys[key].daily;
 			if (daily && daily.length > 0) {
 				const start = chart.strToDate(daily[0].date);
@@ -185,6 +187,8 @@ class LineChart extends chart.BaseChart<YScaleType> implements chart.IChart<YSca
 				});
 			}
 		}
+		// 国と色を固定する
+		this.line_color.domain(clist);
 		dispdata.slider.xaxis.value = [chart.timeFormat(line_xd[0]), chart.timeFormat(line_xd[1])];
 		let date: Date = new Date(line_xd[0].getTime());
 		while (date <= line_xd[1]) {
@@ -273,14 +277,13 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 		this.countrystr = "";
 		this.startdate = "20200401";
 		this.enddate = "20200410";
-		this.setDefaultQuery();
 		this.run(query);
 	}
 	public setDefaultQuery(): void {
 		this.query = [
 			["country", this.countrystr],
-			["category", dispdata.nowcategory],
-			["yscale", dispdata.nowyscale],
+			["category", chart.categoryDefault],
+			["yscale", chart.scaleDefault],
 			["startdate", this.startdate],
 			["enddate", this.enddate],
 		];
@@ -318,9 +321,9 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 		const q = querylist.filter(it => {
 			if (it[0] === "country" && it[1] === this.countrystr) {
 				return false;
-			} else if (it[0] === "category" && it[1] === "confirmed") {
+			} else if (it[0] === "category" && it[1] === chart.categoryDefault) {
 				return false;
-			} else if (it[0] === "yscale" && it[1] === "liner") {
+			} else if (it[0] === "yscale" && it[1] === chart.scaleDefault) {
 				return false;
 			} else if (it[0] === "startdate" && it[1] === this.startdate) {
 				return false;
@@ -329,12 +332,7 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 			}
 			return true;
 		});
-		const url = new URLSearchParams();
-		for (const it of q) {
-			url.append(it[0], it[1]);
-		}
-		const query = url.toString();
-		return query !== "" ? "?" + query : "";
+		return this.buildQuery(q);
 	}
 	public initQuery(query: string = ""): void {
 		const data = dispdata.slider.xaxis.data;
@@ -377,8 +375,8 @@ const dispdata: Display = {
 			data: []
 		}
 	},
-	nowcategory: "confirmed",
-	nowyscale: "liner"
+	nowcategory: chart.categoryDefault,
+	nowyscale: chart.scaleDefault
 };
 const vm = new Vue({
 	el: "#container",

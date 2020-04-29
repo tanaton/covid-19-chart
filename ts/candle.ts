@@ -14,7 +14,7 @@ type ChartPathData = {
 	low: number;
 }
 
-type YScaleType = "liner" | "log";
+type YScaleType = chart.ScaleStr;
 type QueryStr = "country" | "category" | "yscale" | "startdate" | "enddate";
 
 type Display = {
@@ -302,14 +302,13 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 		super(new CandleChart(svgIDcandle));
 		this.startdate = "20200401";
 		this.enddate = "20200410";
-		this.setDefaultQuery();
 		this.run(query);
 	}
 	public setDefaultQuery(): void {
 		this.query = [
-			["country", chart.base64decode(dispdata.nowcountry)],
-			["category", dispdata.nowcategory],
-			["yscale", dispdata.nowyscale],
+			["country", chart.countryDefault],
+			["category", chart.categoryDefault],
+			["yscale", chart.scaleDefault],
 			["startdate", this.startdate],
 			["enddate", this.enddate],
 		];
@@ -337,11 +336,11 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 			querylist = this.query;
 		}
 		const q = querylist.filter(it => {
-			if (it[0] === "country" && it[1] === "Japan") {
+			if (it[0] === "country" && it[1] === chart.countryDefault) {
 				return false;
-			} else if (it[0] === "category" && it[1] === "confirmed") {
+			} else if (it[0] === "category" && it[1] === chart.categoryDefault) {
 				return false;
-			} else if (it[0] === "yscale" && it[1] === "liner") {
+			} else if (it[0] === "yscale" && it[1] === chart.scaleDefault) {
 				return false;
 			} else if (it[0] === "startdate" && it[1] === this.startdate) {
 				return false;
@@ -350,12 +349,7 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 			}
 			return true;
 		});
-		const url = new URLSearchParams();
-		for (const it of q) {
-			url.append(it[0], it[1]);
-		}
-		const query = url.toString();
-		return query !== "" ? "?" + query : "";
+		return this.buildQuery(q);
 	}
 	public initQuery(query: string = ""): void {
 		const data = dispdata.slider.xaxis.data;
@@ -394,9 +388,9 @@ const dispdata: Display = {
 			data: []
 		}
 	},
-	nowcategory: "confirmed",
-	nowyscale: "liner",
-	nowcountry: chart.base64encode("Japan")
+	nowcategory: chart.categoryDefault,
+	nowyscale: chart.scaleDefault,
+	nowcountry: chart.base64encode(chart.countryDefault)
 };
 const vm = new Vue({
 	el: "#container",

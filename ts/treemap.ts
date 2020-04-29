@@ -57,7 +57,7 @@ class TreemapChart extends chart.BaseChart<unknown> implements chart.IChart<unkn
 		super(svgid);
 		this.colorReds = d3.interpolate("lightpink", "red");
 		this.colorGreens = d3.interpolate("lightgreen", "green");
-		this.target = "confirmed";
+		this.target = chart.categoryDefault;
 		this.now = {
 			confirmed: 0,
 			deaths: 0,
@@ -249,12 +249,11 @@ class Client extends client.BaseClient<QueryStr, unknown> implements client.ICli
 	constructor(query: string = "") {
 		super(new TreemapChart(svgIDTreemap));
 		this.date = "20200401";
-		this.setDefaultQuery();
 		this.run(query);
 	}
 	public setDefaultQuery(): void {
 		this.query = [
-			["category", dispdata.nowcategory],
+			["category", chart.categoryDefault],
 			["date", this.date],
 		];
 	}
@@ -276,19 +275,14 @@ class Client extends client.BaseClient<QueryStr, unknown> implements client.ICli
 			querylist = this.query;
 		}
 		const q = querylist.filter(it => {
-			if (it[0] === "category" && it[1] === "confirmed") {
+			if (it[0] === "category" && it[1] === chart.categoryDefault) {
 				return false;
 			} else if (it[0] === "date" && it[1] === this.date) {
 				return false;
 			}
 			return true;
 		});
-		const url = new URLSearchParams();
-		for (const it of q) {
-			url.append(it[0], it[1]);
-		}
-		const query = url.toString();
-		return query !== "" ? "?" + query : "";
+		return this.buildQuery(q);
 	}
 	public initQuery(query: string = ""): void {
 		const data = dispdata.slider.date.data;
@@ -320,7 +314,7 @@ const dispdata: Display = {
 			data: []
 		}
 	},
-	nowcategory: "confirmed"
+	nowcategory: chart.categoryDefault
 };
 const vm = new Vue({
 	el: "#container",

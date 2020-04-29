@@ -21,7 +21,7 @@ type ChartDataCountrys = {
 	}
 }
 
-type XScaleType = "liner" | "log";
+type XScaleType = chart.ScaleStr;
 type QueryStr = "category" | "rank" | "xscale" | "date";
 
 type Display = {
@@ -87,7 +87,7 @@ class HorizontalBarChart extends chart.BaseChart<XScaleType> implements chart.IC
 			.tickPadding(7)
 			.ticks(5);
 
-		this.hbar_color = d3.scaleOrdinal(d3.schemeCategory10);
+		this.hbar_color = d3.scaleOrdinal(chart.metroColor);
 	}
 	public changeData(target: chart.NumberStr): void {
 		if (!this.raw) {
@@ -126,6 +126,7 @@ class HorizontalBarChart extends chart.BaseChart<XScaleType> implements chart.IC
 		this.raw = raw;
 		this.data = {};
 		const daterange: [Date, Date] = [new Date(2099, 11, 31), new Date(2001, 0, 1)];
+		const clist: string[] = [];
 
 		for (const key in raw.countrys) {
 			if (!raw.countrys.hasOwnProperty(key)) {
@@ -135,6 +136,7 @@ class HorizontalBarChart extends chart.BaseChart<XScaleType> implements chart.IC
 			if (!daily || daily.length <= 0) {
 				continue;
 			}
+			clist.push(key);
 			const start = chart.strToDate(daily[0].date);
 			const last = daily[daily.length - 1];
 			const end = chart.strToDate(last.date);
@@ -158,6 +160,8 @@ class HorizontalBarChart extends chart.BaseChart<XScaleType> implements chart.IC
 				});
 			}
 		}
+		// 国と色を固定する
+		this.hbar_color.domain(clist);
 		this.nowdatestr = chart.timeFormat(daterange[1]);
 		dispdata.slider.date.value = this.nowdatestr;
 		let date: Date = new Date(daterange[0].getTime());
@@ -243,14 +247,13 @@ class Client extends client.BaseClient<QueryStr, XScaleType> implements client.I
 	constructor(query: string = "") {
 		super(new HorizontalBarChart(svgIDhbar));
 		this.date = "20200410";
-		this.setDefaultQuery();
 		this.run(query);
 	}
 	public setDefaultQuery(): void {
 		this.query = [
-			["category", dispdata.nowcategory],
-			["rank", dispdata.nowrank],
-			["xscale", dispdata.nowxscale],
+			["category", chart.categoryDefault],
+			["rank", "30"],
+			["xscale", chart.scaleDefault],
 			["date", this.date]
 		];
 	}
@@ -274,23 +277,18 @@ class Client extends client.BaseClient<QueryStr, XScaleType> implements client.I
 			querylist = this.query;
 		}
 		const q = querylist.filter(it => {
-			if (it[0] === "category" && it[1] === "confirmed") {
+			if (it[0] === "category" && it[1] === chart.categoryDefault) {
 				return false;
 			} else if (it[0] === "rank" && it[1] === "30") {
 				return false;
-			} else if (it[0] === "xscale" && it[1] === "liner") {
+			} else if (it[0] === "xscale" && it[1] === chart.scaleDefault) {
 				return false;
 			} else if (it[0] === "date" && it[1] === this.date) {
 				return false;
 			}
 			return true;
 		});
-		const url = new URLSearchParams();
-		for (const it of q) {
-			url.append(it[0], it[1]);
-		}
-		const query = url.toString();
-		return query !== "" ? "?" + query : "";
+		return this.buildQuery(q);
 	}
 	public initQuery(query: string = ""): void {
 		const data = dispdata.slider.date.data;
@@ -330,8 +328,8 @@ const dispdata: Display = {
 		{ id: "rank50", name: "上位50ヶ国", value: "50" },
 		{ id: "rank100", name: "上位100ヶ国", value: "100" },
 	],
-	nowcategory: "confirmed",
-	nowxscale: "liner",
+	nowcategory: chart.categoryDefault,
+	nowxscale: chart.scaleDefault,
 	nowrank: "30",
 };
 const vm = new Vue({

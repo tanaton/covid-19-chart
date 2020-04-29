@@ -21,6 +21,7 @@ export abstract class BaseClient<QueryStrT, ScaleT> implements IClient<QueryStrT
 	constructor(c: chart.IChart<ScaleT>) {
 		this.query = [];
 		this.chart = c;
+		this.setDefaultQuery();
 		window.addEventListener("popstate", () => this.updatePage(), false);
 	}
 	public run(query: string = ""): void {
@@ -51,11 +52,22 @@ export abstract class BaseClient<QueryStrT, ScaleT> implements IClient<QueryStrT
 	public abstract initQuery(query: string): void;
 	public abstract loadQuery(query: string): void;
 	public abstract createQuery(query?: [QueryStrT, string][]): string;
+	protected buildQuery(q: [QueryStrT & string, string][]): string {
+		const url = new URLSearchParams();
+		for (const it of q) {
+			url.append(it[0], it[1]);
+		}
+		const query = url.toString();
+		return query !== "" ? "?" + query : "";
+	}
 	public updateQuery(queryList?: [QueryStrT, string][]): void {
 		const query = this.createQuery(queryList);
 		if (query !== location.search) {
 			window.history.pushState("", "", location.pathname + query);
 			this.updatePage();
+		} else {
+			// 正規化
+			window.history.replaceState("", "", location.pathname + query);
 		}
 	}
 	private updatePage(): void {
@@ -64,6 +76,9 @@ export abstract class BaseClient<QueryStrT, ScaleT> implements IClient<QueryStrT
 		const nowquery = this.createQuery();
 		if (nowquery !== oldquery) {
 			this.change();
+		} else {
+			// 正規化
+			window.history.replaceState("", "", location.pathname + nowquery);
 		}
 	}
 	public abstract change(): void;

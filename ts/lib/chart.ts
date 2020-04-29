@@ -23,6 +23,7 @@ export type WorldSummary = {
 }
 
 export type NumberStr = "confirmed" | "deaths" | "recovered";
+export type ScaleStr = "liner" | "log";
 export type NumberIndexType = { readonly [key in NumberStr]: number };
 
 export interface IChart<ScaleT> {
@@ -54,6 +55,43 @@ export const strToDate = (str: string): Date => {
 	// 月は-1しないと期待通りに動作しない
 	return new Date(datearray[0], datearray[1] - 1, datearray[2]);
 }
+export const categoryDefault: NumberStr = "confirmed";
+export const scaleDefault: ScaleStr = "liner";
+export const countryDefault = "Japan";
+// https://www.colordic.org/m
+export const metroColor = [
+	"#ff9500",	// 銀座線オレンジ(2014)Ginza Line Orange
+	"#f62e36",	// 丸ノ内線レッド(2014)Marunouchi Line Red
+	"#b5b5ac",	// 日比谷線シルバー(2014)Hibiya Line Silver
+	"#009bbf",	// 東西線スカイ(2014)Tozai Line Sky
+	"#00bb85",	// 千代田線グリーン(2014)Chiyoda Line Green
+	"#c1a470",	// 有楽町線ゴールド(2014)Yurakucho Line Gold
+	"#8f76d6",	// 半蔵門線パープル(2014)Hanzomon Line Purple
+	"#00ac9b",	// 南北線エメラルド(2014)Namboku Line Emerald
+	"#9c5e31",	// 副都心線ブラウン(2014)Fukutoshin Line Brown
+	"#f39700",	// 銀座線オレンジGinza Line Orange
+	"#e60012",	// 丸の内線レッドMarunouchi Line Red
+	"#9caeb7",	// 日比谷線シルバーHibiya Line Silver
+	"#00a7db",	// 東西線スカイTozai Line Sky
+	"#009944",	// 千代田線グリーンChiyoda Line Green
+	"#d7c447",	// 有楽町線ゴールドYurakucho Line Gold
+	"#9b7cb6",	// 半蔵門線パープルHanzomon Line Purple
+	"#00ada9",	// 南北線エメラルドNamboku Line Emerald
+	"#bb641d",	// 副都心線ブラウンFukutoshin Line Brown
+	"#e85298",	// 浅草線ローズAsakusa Line Rose
+	"#0079c2",	// 三田線ブルーMita Line Blue
+	"#6cbb5a",	// 新宿線リーフShinjuku Line Leaf
+	"#b6007a",	// 大江戸線ルビーOedo Line Ruby
+	"#e5171f",	// 御堂筋線 臙脂Midosuji Line Red
+	"#522886",	// 谷町線 京紫Tanimachi Line Purple
+	"#0078ba",	// 四つ橋線 縹Yotsubashi Line Blue
+	"#019a66",	// 中央線 緑Chuo Line Green
+	"#e44d93",	// 千日前線 紅梅Sennichimae Line Pink
+	"#814721",	// 堺筋線 マルーンSakaisuji Line Marron
+	"#a9cc51",	// 長堀鶴見緑地線 萌黄Nagahoritsurumiryokuchi Line Yellow Green
+	"#ee7b1a",	// 今里筋線 柑子Imazatosuji Line Orange
+	"#00a0de",	// 南港ポートタウン線 セルリアンブルーNanko port town Line Cerulean Blue
+];
 
 export abstract class BaseChart<ScaleT> {
 	protected readonly margin: Box = { top: 10, right: 10, bottom: 20, left: 60 };
