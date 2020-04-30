@@ -146,8 +146,8 @@ class CandleChart extends chart.BaseChart<YScaleType> implements chart.IChart<YS
 				if (date.getDay() === 1) {
 					// 月曜日にリセット
 					this.candledata.push({
-						date: new Date(date.getTime() - 3600 * 24 * 1000 * 3.5),
-						start: new Date(date.getTime() - 3600 * 24 * 1000 * 7),
+						date: new Date(date.getTime() - chart.dayMillisecond * 3.5),
+						start: new Date(date.getTime() - chart.dayMillisecond * 7),
 						end: date,
 						open: open,
 						close: close,
@@ -162,9 +162,9 @@ class CandleChart extends chart.BaseChart<YScaleType> implements chart.IChart<YS
 			if (date && date.getDay() !== 1) {
 				// 最終日が月曜日以外ならデータ追加
 				const monday = (date.getDay() + 6) % 7; // 月曜日からの経過日数を取得
-				const start = new Date(date.getTime() - 3600 * 24 * 1000 * monday);
+				const start = new Date(date.getTime() - chart.dayMillisecond * monday);
 				this.candledata.push({
-					date: new Date(start.getTime() + 3600 * 24 * 1000 * 3.5),
+					date: new Date(start.getTime() + chart.dayMillisecond * 3.5),
 					start: start,
 					end: date,
 					open: open,
@@ -181,7 +181,7 @@ class CandleChart extends chart.BaseChart<YScaleType> implements chart.IChart<YS
 		if (this.candledata && this.candledata.length > 0) {
 			const start = line_xd[0].getTime();
 			const end = line_xd[1].getTime();
-			this.candlewidth = Math.max(Math.floor((this.width / Math.max((end - start) / (3600 * 24 * 1000 * 7), 1)) * 0.95), 3);
+			this.candlewidth = Math.max(Math.floor((this.width / Math.max((end - start) / (chart.dayMillisecond * 7), 1)) * 0.95), 3);
 		} else {
 			this.candlewidth = 10;
 		}
@@ -225,7 +225,7 @@ class CandleChart extends chart.BaseChart<YScaleType> implements chart.IChart<YS
 		let date: Date = new Date(line_xd[0].getTime());
 		while (date <= line_xd[1]) {
 			dispdata.slider.xaxis.data.push(chart.timeFormat(date));
-			date = new Date(date.getTime() + 60 * 60 * 24 * 1000);
+			date = new Date(date.getTime() + chart.dayMillisecond);
 		}
 	}
 	public resetScale(scale: YScaleType) {
@@ -305,13 +305,12 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 		this.run(query);
 	}
 	public setDefaultQuery(): void {
-		this.query = [
-			["country", chart.countryDefault],
-			["category", chart.categoryDefault],
-			["yscale", chart.scaleDefault],
-			["startdate", this.startdate],
-			["enddate", this.enddate],
-		];
+		this.query.init();
+		this.query.set("country", chart.countryDefault);
+		this.query.set("category", chart.categoryDefault);
+		this.query.set("yscale", chart.scaleDefault);
+		this.query.set("startdate", this.startdate);
+		this.query.set("enddate", this.enddate);
 	}
 	public loadQuery(query: string): void {
 		if (!query) {
@@ -321,17 +320,17 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 		const url = new URLSearchParams(query);
 		for (const [key, value] of url) {
 			const qs = key as QueryStr;
-			this.query[QueryIndex[qs]] = [qs, value];
+			this.query.set(qs, value);
 		}
-		dispdata.nowcountry = chart.base64encode(this.query[QueryIndex["country"]][1]);
-		dispdata.nowcategory = this.query[QueryIndex["category"]][1] as chart.NumberStr;
-		dispdata.nowyscale = this.query[QueryIndex["yscale"]][1] as YScaleType;
+		dispdata.nowcountry = chart.base64encode(this.query.get("country"));
+		dispdata.nowcategory = this.query.get("category") as chart.NumberStr;
+		dispdata.nowyscale = this.query.get("yscale") as YScaleType;
 		dispdata.slider.xaxis.value = [
-			this.query[QueryIndex["startdate"]][1],
-			this.query[QueryIndex["enddate"]][1]
+			this.query.get("startdate"),
+			this.query.get("enddate")
 		];
 	}
-	public createQuery(querylist?: [QueryStr, string][]): string {
+	public createQuery(querylist?: client.Query<QueryStr>): string {
 		if (!querylist) {
 			querylist = this.query;
 		}
@@ -349,7 +348,7 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 			}
 			return true;
 		});
-		return this.buildQuery(q);
+		return q.toString();
 	}
 	public initQuery(query: string = ""): void {
 		const data = dispdata.slider.xaxis.data;
@@ -399,27 +398,10 @@ const vm = new Vue({
 		'VueSlider': VueSlider,
 	},
 	methods: {
-		categoryChange: () => {
-			const query = cli.getQuery();
-			query[QueryIndex["category"]][1] = dispdata.nowcategory;
-			cli.updateQuery(query);
-		},
-		yscaleChange: () => {
-			const query = cli.getQuery();
-			query[QueryIndex["yscale"]][1] = dispdata.nowyscale;
-			cli.updateQuery(query);
-		},
-		countryChange: () => {
-			const query = cli.getQuery();
-			query[QueryIndex["country"]][1] = chart.base64decode(dispdata.nowcountry);
-			cli.updateQuery(query);
-		},
-		sliderChange: () => {
-			const query = cli.getQuery();
-			query[QueryIndex["startdate"]][1] = dispdata.slider.xaxis.value[0];
-			query[QueryIndex["enddate"]][1] = dispdata.slider.xaxis.value[1];
-			cli.updateQuery(query);
-		}
+		categoryChange: () => cli.update([["category", dispdata.nowcategory]]),
+		yscaleChange: () => cli.update([["yscale", dispdata.nowyscale]]),
+		countryChange: () => cli.update([["country", chart.base64decode(dispdata.nowcountry)]]),
+		sliderChange: () => cli.update([["startdate", dispdata.slider.xaxis.value[0]], ["enddate", dispdata.slider.xaxis.value[1]]])
 	},
 	computed: {
 		nowcountrystr: () => chart.base64decode(dispdata.nowcountry)

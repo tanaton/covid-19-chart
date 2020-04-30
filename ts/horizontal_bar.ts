@@ -80,6 +80,7 @@ class HorizontalBarChart extends chart.BaseChart<XScaleType> implements chart.IC
 			.range([this.height, 0]);
 		this.hbar_xAxis = d3.axisBottom<number>(this.hbar_x)
 			.tickSizeInner(-this.height)
+			.tickFormat(chart.formatNumberConmma)
 			.tickPadding(7)
 			.ticks(5);
 		this.hbar_yAxis = d3.axisLeft<number>(this.hbar_y)
@@ -167,7 +168,7 @@ class HorizontalBarChart extends chart.BaseChart<XScaleType> implements chart.IC
 		let date: Date = new Date(daterange[0].getTime());
 		while (date <= daterange[1]) {
 			dispdata.slider.date.data.push(chart.timeFormat(date));
-			date = new Date(date.getTime() + 60 * 60 * 24 * 1000);
+			date = new Date(date.getTime() + chart.dayMillisecond);
 		}
 	}
 	public resetScale(scale: XScaleType) {
@@ -189,12 +190,7 @@ class HorizontalBarChart extends chart.BaseChart<XScaleType> implements chart.IC
 		this.hbar_x.range([0, this.width]);
 		this.hbar_x.domain(xd);
 		this.hbar_x.nice();
-
-		this.hbar_xAxis = d3.axisBottom<number>(this.hbar_x)
-			.tickSizeInner(-this.height)
-			.tickFormat(chart.formatNumberConmma)
-			.tickPadding(7)
-			.ticks(5);
+		this.hbar_xAxis.scale(this.hbar_x);
 	}
 	public draw(): void {
 		if (!this.hbardata) {
@@ -250,12 +246,11 @@ class Client extends client.BaseClient<QueryStr, XScaleType> implements client.I
 		this.run(query);
 	}
 	public setDefaultQuery(): void {
-		this.query = [
-			["category", chart.categoryDefault],
-			["rank", "30"],
-			["xscale", chart.scaleDefault],
-			["date", this.date]
-		];
+		this.query.init();
+		this.query.set("category", chart.categoryDefault);
+		this.query.set("rank", "30");
+		this.query.set("xscale", chart.scaleDefault);
+		this.query.set("date", this.date);
 	}
 	public loadQuery(query: string): void {
 		if (!query) {
@@ -265,14 +260,14 @@ class Client extends client.BaseClient<QueryStr, XScaleType> implements client.I
 		const url = new URLSearchParams(query);
 		for (const [key, value] of url) {
 			const qs = key as QueryStr;
-			this.query[QueryIndex[qs]] = [qs, value];
+			this.query.set(qs, value);
 		}
-		dispdata.nowcategory = this.query[QueryIndex["category"]][1] as chart.NumberStr;
-		dispdata.nowrank = this.query[QueryIndex["rank"]][1];
-		dispdata.nowxscale = this.query[QueryIndex["xscale"]][1] as XScaleType;
-		dispdata.slider.date.value = this.query[QueryIndex["date"]][1];
+		dispdata.nowcategory = this.query.get("category") as chart.NumberStr;
+		dispdata.nowrank = this.query.get("rank");
+		dispdata.nowxscale = this.query.get("xscale") as XScaleType;
+		dispdata.slider.date.value = this.query.get("date");
 	}
-	public createQuery(querylist?: [QueryStr, string][]): string {
+	public createQuery(querylist?: client.Query<QueryStr>): string {
 		if (!querylist) {
 			querylist = this.query;
 		}
@@ -288,7 +283,7 @@ class Client extends client.BaseClient<QueryStr, XScaleType> implements client.I
 			}
 			return true;
 		});
-		return this.buildQuery(q);
+		return q.toString();
 	}
 	public initQuery(query: string = ""): void {
 		const data = dispdata.slider.date.data;
@@ -339,26 +334,10 @@ const vm = new Vue({
 		'VueSlider': VueSlider,
 	},
 	methods: {
-		categoryChange: () => {
-			const query = cli.getQuery();
-			query[QueryIndex["category"]][1] = dispdata.nowcategory;
-			cli.updateQuery(query);
-		},
-		xscaleChange: () => {
-			const query = cli.getQuery();
-			query[QueryIndex["xscale"]][1] = dispdata.nowxscale;
-			cli.updateQuery(query);
-		},
-		sliderChange: () => {
-			const query = cli.getQuery();
-			query[QueryIndex["date"]][1] = dispdata.slider.date.value;
-			cli.updateQuery(query);
-		},
-		rankChange: () => {
-			const query = cli.getQuery();
-			query[QueryIndex["rank"]][1] = dispdata.nowrank;
-			cli.updateQuery(query);
-		}
+		categoryChange: () => cli.update([["category", dispdata.nowcategory]]),
+		xscaleChange: () => cli.update([["xscale", dispdata.nowxscale]]),
+		sliderChange: () => cli.update([["date", dispdata.slider.date.value]]),
+		rankChange: () => cli.update([["rank", dispdata.nowrank]])
 	}
 });
 const cli = new Client(location.search);

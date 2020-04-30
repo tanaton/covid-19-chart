@@ -78,6 +78,7 @@ class LineChart extends chart.BaseChart<YScaleType> implements chart.IChart<YSca
 			.ticks(5);
 		this.line_yAxis = d3.axisLeft<number>(this.line_y)
 			.tickSizeInner(-this.width)
+			.tickFormat(chart.formatNumberConmma)
 			.tickPadding(7)
 			.ticks(5);
 		this.line_line = d3.line<ChartPathData>()
@@ -193,7 +194,7 @@ class LineChart extends chart.BaseChart<YScaleType> implements chart.IChart<YSca
 		let date: Date = new Date(line_xd[0].getTime());
 		while (date <= line_xd[1]) {
 			dispdata.slider.xaxis.data.push(chart.timeFormat(date));
-			date = new Date(date.getTime() + 60 * 60 * 24 * 1000);
+			date = new Date(date.getTime() + chart.dayMillisecond);
 		}
 	}
 	public resetScale(scale: YScaleType): void {
@@ -215,12 +216,7 @@ class LineChart extends chart.BaseChart<YScaleType> implements chart.IChart<YSca
 		this.line_y.range([this.height, 0]);
 		this.line_y.domain(line_yd);
 		this.line_y.nice();
-
-		this.line_yAxis = d3.axisLeft<number>(this.line_y)
-			.tickSizeInner(-this.width)
-			.tickFormat(chart.formatNumberConmma)
-			.tickPadding(7)
-			.ticks(5);
+		this.line_yAxis.scale(this.line_y);
 	}
 	public draw(): void {
 		if (!this.linedata) {
@@ -280,13 +276,12 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 		this.run(query);
 	}
 	public setDefaultQuery(): void {
-		this.query = [
-			["country", this.countrystr],
-			["category", chart.categoryDefault],
-			["yscale", chart.scaleDefault],
-			["startdate", this.startdate],
-			["enddate", this.enddate],
-		];
+		this.query.init();
+		this.query.set("country", this.countrystr);
+		this.query.set("category", chart.categoryDefault);
+		this.query.set("yscale", chart.scaleDefault);
+		this.query.set("startdate", this.startdate);
+		this.query.set("enddate", this.enddate);
 	}
 	public loadQuery(query: string): void {
 		if (!query) {
@@ -296,25 +291,25 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 		const url = new URLSearchParams(query);
 		for (const [key, value] of url) {
 			const qs = key as QueryStr;
-			this.query[QueryIndex[qs]] = [qs, value];
+			this.query.set(qs, value);
 		}
-		this.query[QueryIndex["country"]][1].split("|").forEach(it => {
+		this.query.get("country").split("|").forEach(it => {
 			const country = decodeURI(it);
 			if (this.countryIndex[country] !== undefined) {
 				dispdata.countrys[this.countryIndex[country]].checked = true;
 			}
 		})
-		dispdata.nowcategory = this.query[QueryIndex["category"]][1] as chart.NumberStr;
-		dispdata.nowyscale = this.query[QueryIndex["yscale"]][1] as YScaleType;
+		dispdata.nowcategory = this.query.get("category") as chart.NumberStr;
+		dispdata.nowyscale = this.query.get("yscale") as YScaleType;
 		dispdata.slider.xaxis.value = [
-			this.query[QueryIndex["startdate"]][1],
-			this.query[QueryIndex["enddate"]][1]
+			this.query.get("startdate"),
+			this.query.get("enddate")
 		];
 	}
 	public static countryListStr(): string {
 		return dispdata.countrys.filter(it => it.checked).map(it => it.name).sort().join("|");
 	}
-	public createQuery(querylist?: [QueryStr, string][]): string {
+	public createQuery(querylist?: client.Query<QueryStr>): string {
 		if (!querylist) {
 			querylist = this.query;
 		}
@@ -332,7 +327,7 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 			}
 			return true;
 		});
-		return this.buildQuery(q);
+		return q.toString();
 	}
 	public initQuery(query: string = ""): void {
 		const data = dispdata.slider.xaxis.data;
@@ -385,36 +380,20 @@ const vm = new Vue({
 		'VueSlider': VueSlider,
 	},
 	methods: {
-		categoryChange: () => {
-			const query = cli.getQuery();
-			query[QueryIndex["category"]][1] = dispdata.nowcategory;
-			cli.updateQuery(query);
-		},
-		yscaleChange: () => {
-			const query = cli.getQuery();
-			query[QueryIndex["yscale"]][1] = dispdata.nowyscale;
-			cli.updateQuery(query);
-		},
-		countryChange: () => {
-			const query = cli.getQuery();
-			query[QueryIndex["country"]][1] = Client.countryListStr();
-			cli.updateQuery(query);
-		},
+		categoryChange: () => cli.update([["category", dispdata.nowcategory]]),
+		yscaleChange: () => cli.update([["yscale", dispdata.nowyscale]]),
+		countryChange: () => cli.update([["country", Client.countryListStr()]]),
 		countryCheckAllClick: () => {
 			for (const country of dispdata.countrys) {
 				country.checked = true;
 			}
-			const query = cli.getQuery();
-			query[QueryIndex["country"]][1] = Client.countryListStr();
-			cli.updateQuery(query);
+			cli.update([["country", Client.countryListStr()]]);
 		},
 		countryUncheckAllClick: () => {
 			for (const country of dispdata.countrys) {
 				country.checked = false;
 			}
-			const query = cli.getQuery();
-			query[QueryIndex["country"]][1] = "";
-			cli.updateQuery(query);
+			cli.update([["country", ""]]);
 		},
 		countryCheckBest10Click: () => {
 			const indexmap: { [key in string]: number } = {};
@@ -432,16 +411,9 @@ const vm = new Vue({
 				const index = indexmap[datalist[i].name];
 				dispdata.countrys[index].checked = true;
 			}
-			const query = cli.getQuery();
-			query[QueryIndex["country"]][1] = Client.countryListStr();
-			cli.updateQuery(query);
+			cli.update([["country", Client.countryListStr()]]);
 		},
-		sliderChange: () => {
-			const query = cli.getQuery();
-			query[QueryIndex["startdate"]][1] = dispdata.slider.xaxis.value[0];
-			query[QueryIndex["enddate"]][1] = dispdata.slider.xaxis.value[1];
-			cli.updateQuery(query);
-		}
+		sliderChange: () => cli.update([["startdate", dispdata.slider.xaxis.value[0]], ["enddate", dispdata.slider.xaxis.value[1]]])
 	}
 });
 const cli = new Client(location.search);

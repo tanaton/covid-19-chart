@@ -41,6 +41,7 @@ export const NumberIndex: NumberIndexType = {
 	recovered: 2,
 };
 
+export const dayMillisecond = 60 * 60 * 24 * 1000;
 export const timeFormat = d3.timeFormat("%Y%m%d");
 export const formatNumberConmma = d3.format(",d");
 export const formatNumberSuffix = d3.format(",.3s");

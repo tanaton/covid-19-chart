@@ -38,10 +38,6 @@ type Display = {
 	nowcategory: chart.NumberStr;
 }
 
-const QueryIndex: { readonly [key in QueryStr]: number } = {
-	category: 0,
-	date: 1
-};
 const svgIDTreemap = "svgtreemap";
 
 class TreemapChart extends chart.BaseChart<unknown> implements chart.IChart<unknown> {
@@ -149,7 +145,7 @@ class TreemapChart extends chart.BaseChart<unknown> implements chart.IChart<unkn
 		let date: Date = new Date(daterange[0].getTime());
 		while (date <= daterange[1]) {
 			dispdata.slider.date.data.push(chart.timeFormat(date));
-			date = new Date(date.getTime() + 60 * 60 * 24 * 1000);
+			date = new Date(date.getTime() + chart.dayMillisecond);
 		}
 	}
 	public draw(): void {
@@ -252,10 +248,9 @@ class Client extends client.BaseClient<QueryStr, unknown> implements client.ICli
 		this.run(query);
 	}
 	public setDefaultQuery(): void {
-		this.query = [
-			["category", chart.categoryDefault],
-			["date", this.date],
-		];
+		this.query.init();
+		this.query.set("category", chart.categoryDefault);
+		this.query.set("date", this.date);
 	}
 	public loadQuery(query: string): void {
 		if (!query) {
@@ -265,12 +260,12 @@ class Client extends client.BaseClient<QueryStr, unknown> implements client.ICli
 		const url = new URLSearchParams(query);
 		for (const [key, value] of url) {
 			const qs = key as QueryStr;
-			this.query[QueryIndex[qs]] = [qs, value];
+			this.query.set(qs, value);
 		}
-		dispdata.nowcategory = this.query[QueryIndex["category"]][1] as chart.NumberStr;
-		dispdata.slider.date.value = this.query[QueryIndex["date"]][1];
+		dispdata.nowcategory = this.query.get("category") as chart.NumberStr;
+		dispdata.slider.date.value = this.query.get("date");
 	}
-	public createQuery(querylist?: [QueryStr, string][]): string {
+	public createQuery(querylist?: client.Query<QueryStr>): string {
 		if (!querylist) {
 			querylist = this.query;
 		}
@@ -282,7 +277,7 @@ class Client extends client.BaseClient<QueryStr, unknown> implements client.ICli
 			}
 			return true;
 		});
-		return this.buildQuery(q);
+		return q.toString();
 	}
 	public initQuery(query: string = ""): void {
 		const data = dispdata.slider.date.data;
@@ -323,16 +318,8 @@ const vm = new Vue({
 		'VueSlider': VueSlider,
 	},
 	methods: {
-		categoryChange: () => {
-			const query = cli.getQuery();
-			query[QueryIndex["category"]][1] = dispdata.nowcategory;
-			cli.updateQuery(query);
-		},
-		sliderChange: () => {
-			const query = cli.getQuery();
-			query[QueryIndex["date"]][1] = dispdata.slider.date.value;
-			cli.updateQuery(query);
-		},
+		categoryChange: () => cli.update([["category", dispdata.nowcategory]]),
+		sliderChange: () => cli.update([["date", dispdata.slider.date.value]])
 	}
 });
 const cli = new Client(location.search);
