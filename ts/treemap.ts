@@ -22,6 +22,7 @@ type HierarchyDatum = {
 	children?: HierarchyDatum[];
 }
 
+//type QueryStr = "category" | "date";
 type QueryStr = "category" | "date";
 
 type Display = {
@@ -60,6 +61,8 @@ class TreemapChart extends chart.BaseChart<unknown> implements chart.IChart<unkn
 			recovered: 0
 		};
 		this.nowdatestr = "20200401";
+	}
+	public resetScale(scale: unknown): void {
 	}
 	public changeData(target: chart.NumberStr): void {
 		if (!this.data || !this.data.daily) {
@@ -142,11 +145,7 @@ class TreemapChart extends chart.BaseChart<unknown> implements chart.IChart<unkn
 		}
 		this.nowdatestr = chart.timeFormat(daterange[1]);
 		dispdata.slider.date.value = this.nowdatestr;
-		let date: Date = new Date(daterange[0].getTime());
-		while (date <= daterange[1]) {
-			dispdata.slider.date.data.push(chart.timeFormat(date));
-			date = new Date(date.getTime() + chart.dayMillisecond);
-		}
+		dispdata.slider.date.data = this.createDateRange(daterange[0], daterange[1]);
 	}
 	public draw(): void {
 		if (!this.nodes) {
@@ -247,37 +246,20 @@ class Client extends client.BaseClient<QueryStr, unknown> implements client.ICli
 		this.date = "20200401";
 		this.run(query);
 	}
-	public setDefaultQuery(): void {
-		this.query.init();
-		this.query.set("category", chart.categoryDefault);
-		this.query.set("date", this.date);
+	public createDefaultQuery(): client.Query<QueryStr> {
+		const q = new client.Query<QueryStr>();
+		q.set("category", chart.categoryDefault);
+		q.set("date", this.date);
+		return q;
 	}
 	public loadQuery(query: string): void {
 		if (!query) {
 			query = location.search;
 		}
-		this.setDefaultQuery();
-		const url = new URLSearchParams(query);
-		for (const [key, value] of url) {
-			const qs = key as QueryStr;
-			this.query.set(qs, value);
-		}
+		this.query = this.createDefaultQuery();
+		this.query.loadSearchParams(query);
 		dispdata.nowcategory = this.query.get("category") as chart.NumberStr;
 		dispdata.slider.date.value = this.query.get("date");
-	}
-	public createQuery(querylist?: client.Query<QueryStr>): string {
-		if (!querylist) {
-			querylist = this.query;
-		}
-		const q = querylist.filter(it => {
-			if (it[0] === "category" && it[1] === chart.categoryDefault) {
-				return false;
-			} else if (it[0] === "date" && it[1] === this.date) {
-				return false;
-			}
-			return true;
-		});
-		return q.toString();
 	}
 	public initQuery(query: string = ""): void {
 		const data = dispdata.slider.date.data;

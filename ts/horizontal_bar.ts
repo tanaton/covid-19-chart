@@ -23,6 +23,7 @@ type ChartDataCountrys = {
 
 type XScaleType = chart.ScaleStr;
 type QueryStr = "category" | "rank" | "xscale" | "date";
+type RankStr = "10" | "30" | "50" | "100";
 
 type Display = {
 	categorys: Array<{ id: chart.NumberStr, name: string }>;
@@ -33,18 +34,12 @@ type Display = {
 			data: string[];
 		};
 	};
-	ranks: Array<{ id: string, name: string, value: string }>;
+	ranks: Array<{ id: string, name: string, value: RankStr }>;
 	nowcategory: chart.NumberStr;
 	nowxscale: XScaleType;
-	nowrank: string;
+	nowrank: RankStr;
 }
 
-const QueryIndex: { readonly [key in QueryStr]: number } = {
-	category: 0,
-	rank: 1,
-	xscale: 2,
-	date: 3
-};
 const svgIDhbar = "svghbar";
 const line_xd_default: readonly [number, number] = [0, 0];
 const line_yd_default: readonly [number, number] = [0, 0];
@@ -165,11 +160,7 @@ class HorizontalBarChart extends chart.BaseChart<XScaleType> implements chart.IC
 		this.hbar_color.domain(clist);
 		this.nowdatestr = chart.timeFormat(daterange[1]);
 		dispdata.slider.date.value = this.nowdatestr;
-		let date: Date = new Date(daterange[0].getTime());
-		while (date <= daterange[1]) {
-			dispdata.slider.date.data.push(chart.timeFormat(date));
-			date = new Date(date.getTime() + chart.dayMillisecond);
-		}
+		dispdata.slider.date.data = this.createDateRange(daterange[0], daterange[1]);
 	}
 	public resetScale(scale: XScaleType) {
 		const xd = this.hbar_x.domain();
@@ -183,8 +174,7 @@ class HorizontalBarChart extends chart.BaseChart<XScaleType> implements chart.IC
 				xd[0] = 1;
 				break;
 			default:
-				this.hbar_x = d3.scaleLinear();
-				xd[0] = 0;
+				const _exhaustiveCheck: never = scale;
 				break;
 		}
 		this.hbar_x.range([0, this.width]);
@@ -245,45 +235,24 @@ class Client extends client.BaseClient<QueryStr, XScaleType> implements client.I
 		this.date = "20200410";
 		this.run(query);
 	}
-	public setDefaultQuery(): void {
-		this.query.init();
-		this.query.set("category", chart.categoryDefault);
-		this.query.set("rank", "30");
-		this.query.set("xscale", chart.scaleDefault);
-		this.query.set("date", this.date);
+	public createDefaultQuery(): client.Query<QueryStr> {
+		const q = new client.Query<QueryStr>();
+		q.set("category", chart.categoryDefault);
+		q.set("rank", "30");
+		q.set("xscale", chart.scaleDefault);
+		q.set("date", this.date);
+		return q;
 	}
 	public loadQuery(query: string): void {
 		if (!query) {
 			query = location.search;
 		}
-		this.setDefaultQuery();
-		const url = new URLSearchParams(query);
-		for (const [key, value] of url) {
-			const qs = key as QueryStr;
-			this.query.set(qs, value);
-		}
+		this.query = this.createDefaultQuery();
+		this.query.loadSearchParams(query);
 		dispdata.nowcategory = this.query.get("category") as chart.NumberStr;
-		dispdata.nowrank = this.query.get("rank");
+		dispdata.nowrank = this.query.get("rank") as RankStr;
 		dispdata.nowxscale = this.query.get("xscale") as XScaleType;
 		dispdata.slider.date.value = this.query.get("date");
-	}
-	public createQuery(querylist?: client.Query<QueryStr>): string {
-		if (!querylist) {
-			querylist = this.query;
-		}
-		const q = querylist.filter(it => {
-			if (it[0] === "category" && it[1] === chart.categoryDefault) {
-				return false;
-			} else if (it[0] === "rank" && it[1] === "30") {
-				return false;
-			} else if (it[0] === "xscale" && it[1] === chart.scaleDefault) {
-				return false;
-			} else if (it[0] === "date" && it[1] === this.date) {
-				return false;
-			}
-			return true;
-		});
-		return q.toString();
 	}
 	public initQuery(query: string = ""): void {
 		const data = dispdata.slider.date.data;

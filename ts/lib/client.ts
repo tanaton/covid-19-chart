@@ -2,84 +2,93 @@ import * as chart from "./chart"
 
 const summaryUrl = "/data/daily_reports/summary.json";
 
-export interface IClient<QueryStrT> {
-	run(query: string): void;
-	dispose(): void;
-	setDefaultQuery(): void;
-	getQuery(): Query<QueryStrT>;
-	initQuery(query: string): void;
-	loadQuery(query: string): void;
-	createQuery(query?: Query<QueryStrT>): string;
-	updateQuery(query?: Query<QueryStrT>): void;
-	update(pair: [QueryStrT, string][]): void;
-	change(): void;
-}
-
-export class Query<QueryStrT> {
-	private query: string[] = [];
+export class Query<QueryStrT extends string> implements Iterable<[QueryStrT, string]> {
+	private query: [QueryStrT, string][] = [];
 	private queryIndex: { [key in string]: number } = {};
+
 	constructor() {
 		this.init();
+	}
+	[Symbol.iterator]() {
+		let index = 0;
+		const query: readonly [QueryStrT, string][] = this.query;
+		return {
+			next(): IteratorResult<[QueryStrT, string]> {
+				if (index < query.length) {
+					return {
+						done: false,
+						value: query[index++]
+					}
+				} else {
+					return {
+						done: true,
+						value: null
+					}
+				}
+			}
+		};
 	}
 	public init(): void {
 		this.query = [];
 		this.queryIndex = {};
 	}
-	public set(key: QueryStrT & string, val: string): void {
+	public set(key: QueryStrT, val: string): void {
 		if (this.queryIndex[key] === undefined) {
 			this.queryIndex[key] = this.query.length;
-			this.query.push(val);
+			this.query.push([key, val]);
 		} else {
-			this.query[this.queryIndex[key]] = val;
+			this.query[this.queryIndex[key]] = [key, val];
 		}
 	}
-	public get(key: QueryStrT & string): string {
-		return this.query[this.queryIndex[key]] ?? "";
+	public get(key: QueryStrT): string {
+		return this.query[this.queryIndex[key]][1] ?? "";
 	}
 	public copy(): Query<QueryStrT> {
 		const q = new Query<QueryStrT>();
-		q.query = this.query.concat();
-		for (const key in this.queryIndex) {
-			if (this.queryIndex.hasOwnProperty(key)) {
-				q.queryIndex[key] = this.queryIndex[key];
+		for (const [key, val] of this) {
+			q.set(key, val);
+		}
+		return q;
+	}
+	public filter(filter: Query<QueryStrT>): Query<QueryStrT> {
+		const q = new Query<QueryStrT>();
+		for (const [key, val] of this) {
+			if (val !== filter.get(key)) {
+				q.set(key, val);
 			}
 		}
 		return q;
 	}
-	public filter(f: (key: QueryStrT, val: string) => boolean): Query<QueryStrT> {
-		const q = new Query<QueryStrT>();
-		for (const key in this.queryIndex) {
-			if (this.queryIndex.hasOwnProperty(key)) {
-				const index = this.queryIndex[key];
-				const k = key as QueryStrT & string;
-				if (f(k, this.query[index])) {
-					q.query[index] = this.query[index];
-					q.queryIndex[key] = index;
-				}
-			}
+	public loadSearchParams(query?: string): void {
+		const url = new URLSearchParams(query);
+		for (const [key, value] of url) {
+			this.set(key as QueryStrT, value);
 		}
-		return q;
 	}
 	public toString(): string {
 		const url = new URLSearchParams();
-		for (const key in this.queryIndex) {
-			if (this.queryIndex.hasOwnProperty(key)) {
-				url.append(key, this.query[this.queryIndex[key]]);
-			}
+		for (const [key, val] of this) {
+			url.append(key, val);
 		}
 		const query = url.toString();
 		return query !== "" ? "?" + query : "";
 	}
 }
 
-export abstract class BaseClient<QueryStrT, ScaleT> implements IClient<QueryStrT> {
+export interface IClient<QueryStrT extends string> {
+	run(query: string): void;
+	dispose(): void;
+	update(pair: readonly [QueryStrT, string][]): void;
+	change(): void;
+}
+
+export abstract class BaseClient<QueryStrT extends string, ScaleT> implements IClient<QueryStrT> {
 	protected chart: chart.IChart<ScaleT>;
 	protected query: Query<QueryStrT>;
 
 	constructor(c: chart.IChart<ScaleT>) {
-		this.query = new Query<QueryStrT>();
 		this.chart = c;
-		this.setDefaultQuery();
+		this.query = this.createDefaultQuery();
 		window.addEventListener("popstate", () => this.updatePage(), false);
 	}
 	public run(query: string = ""): void {
@@ -103,13 +112,18 @@ export abstract class BaseClient<QueryStrT, ScaleT> implements IClient<QueryStrT
 	public dispose(): void {
 		this.chart?.dispose();
 	}
-	public abstract setDefaultQuery(): void;
+	public abstract createDefaultQuery(): Query<QueryStrT>;
 	public getQuery(): Query<QueryStrT> {
 		return this.query.copy();
 	}
 	public abstract initQuery(query: string): void;
 	public abstract loadQuery(query: string): void;
-	public abstract createQuery(query?: Query<QueryStrT>): string;
+	public createQuery(querylist?: Query<QueryStrT>): string {
+		if (!querylist) {
+			querylist = this.query;
+		}
+		return querylist.filter(this.createDefaultQuery()).toString();
+	}
 	public updateQuery(queryList?: Query<QueryStrT>): void {
 		const query = this.createQuery(queryList);
 		if (query !== location.search) {
@@ -132,11 +146,10 @@ export abstract class BaseClient<QueryStrT, ScaleT> implements IClient<QueryStrT
 		}
 	}
 	public abstract change(): void;
-	public update(pair: [QueryStrT, string][]): void {
+	public update(pair: readonly [QueryStrT, string][]): void {
 		const query = this.getQuery();
-		for (const it of pair) {
-			const key = it[0] as QueryStrT & string;
-			query.set(key, it[1]);
+		for (const [key, val] of pair) {
+			query.set(key, val);
 		}
 		this.updateQuery(query);
 	}

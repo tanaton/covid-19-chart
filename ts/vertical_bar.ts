@@ -35,13 +35,6 @@ type Display = {
 	nowcountry: string;
 }
 
-const QueryIndex: { readonly [key in QueryStr]: number } = {
-	country: 0,
-	category: 1,
-	yscale: 2,
-	startdate: 3,
-	enddate: 4
-};
 const svgIDvbar = "svgvbar";
 const vbar_xd_default: readonly [Date, Date] = [new Date(2099, 11, 31), new Date(2001, 0, 1)];
 const vbar_yd_default: readonly [number, number] = [0, 0];
@@ -168,11 +161,7 @@ class VerticalBarChart extends chart.BaseChart<YScaleType> implements chart.ICha
 		// 国と色を固定する
 		this.vbar_color.domain(clist);
 		dispdata.slider.xaxis.value = [chart.timeFormat(line_xd[0]), chart.timeFormat(line_xd[1])];
-		let date: Date = new Date(line_xd[0].getTime());
-		while (date <= line_xd[1]) {
-			dispdata.slider.xaxis.data.push(chart.timeFormat(date));
-			date = new Date(date.getTime() + chart.dayMillisecond);
-		}
+		dispdata.slider.xaxis.data = this.createDateRange(line_xd[0], line_xd[1]);
 	}
 	public resetScale(scale: YScaleType) {
 		const line_yd = this.vbar_y.domain();
@@ -186,8 +175,7 @@ class VerticalBarChart extends chart.BaseChart<YScaleType> implements chart.ICha
 				line_yd[0] = 1;
 				break;
 			default:
-				this.vbar_y = d3.scaleLinear();
-				line_yd[0] = 0;
+				const _exhaustiveCheck: never = scale;
 				break;
 		}
 		this.vbar_y.range([this.height, 0]);
@@ -240,24 +228,21 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 		this.enddate = "20200410";
 		this.run(query);
 	}
-	public setDefaultQuery(): void {
-		this.query.init();
-		this.query.set("country", chart.countryDefault);
-		this.query.set("category", chart.categoryDefault);
-		this.query.set("yscale", chart.scaleDefault);
-		this.query.set("startdate", this.startdate);
-		this.query.set("enddate", this.enddate);
+	public createDefaultQuery(): client.Query<QueryStr> {
+		const q = new client.Query<QueryStr>();
+		q.set("country", chart.countryDefault);
+		q.set("category", chart.categoryDefault);
+		q.set("yscale", chart.scaleDefault);
+		q.set("startdate", this.startdate);
+		q.set("enddate", this.enddate);
+		return q;
 	}
 	public loadQuery(query: string): void {
 		if (!query) {
 			query = location.search;
 		}
-		this.setDefaultQuery();
-		const url = new URLSearchParams(query);
-		for (const [key, value] of url) {
-			const qs = key as QueryStr;
-			this.query.set(qs, value);
-		}
+		this.query = this.createDefaultQuery();
+		this.query.loadSearchParams(query);
 		dispdata.nowcountry = chart.base64encode(this.query.get("country"));
 		dispdata.nowcategory = this.query.get("category") as chart.NumberStr;
 		dispdata.nowyscale = this.query.get("yscale") as YScaleType;
@@ -265,26 +250,6 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 			this.query.get("startdate"),
 			this.query.get("enddate")
 		];
-	}
-	public createQuery(querylist?: client.Query<QueryStr>): string {
-		if (!querylist) {
-			querylist = this.query;
-		}
-		const q = querylist.filter(it => {
-			if (it[0] === "country" && it[1] === chart.countryDefault) {
-				return false;
-			} else if (it[0] === "category" && it[1] === chart.categoryDefault) {
-				return false;
-			} else if (it[0] === "yscale" && it[1] === chart.scaleDefault) {
-				return false;
-			} else if (it[0] === "startdate" && it[1] === this.startdate) {
-				return false;
-			} else if (it[0] === "enddate" && it[1] === this.enddate) {
-				return false;
-			}
-			return true;
-		});
-		return q.toString();
 	}
 	public initQuery(query: string = ""): void {
 		const data = dispdata.slider.xaxis.data;

@@ -7,18 +7,18 @@ export type Box = {
 	readonly left: number;
 }
 
-export type CDR = [number, number, number];
+export type CDR = readonly [number, number, number];
 
 export type DatasetSimple = {
 	date: string,
 	cdr: CDR
 }
 export type CountrySummary = {
-	daily: DatasetSimple[],
+	daily: readonly DatasetSimple[],
 	cdr: CDR
 }
 export type WorldSummary = {
-	countrys: { [key in string]: CountrySummary },
+	countrys: { readonly [key in string]: CountrySummary },
 	cdr: CDR
 }
 
@@ -122,7 +122,14 @@ export abstract class BaseChart<ScaleT> {
 	public clear(): void {
 		this.svg.selectAll("g").remove();
 	}
-	public resetScale(scale: ScaleT): void {
-
+	public abstract resetScale(scale: ScaleT): void;
+	public createDateRange(start: Date, end: Date): string[] {
+		const datelist: string[] = [];
+		let date: Date = new Date(start.getTime());
+		while (date <= end) {
+			datelist.push(timeFormat(date));
+			date = new Date(date.getTime() + dayMillisecond);
+		}
+		return datelist;
 	}
 }
