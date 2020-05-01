@@ -124,7 +124,7 @@
 				</div>
 			</div>
 			<div class="row">
-				<div class="col-6 align-self-end" v-cloak>
+				<div class="col-4 align-self-end" v-cloak>
 					X軸目盛り：
 					<div v-for="xscale in xscales" class="form-check form-check-inline">
 						<input class="form-check-input" type="radio" v-bind:name="xscale.id" v-bind:id="xscale.id"
@@ -132,13 +132,16 @@
 						<label class="form-check-label" v-bind:for="xscale.id">{{ xscale.name }}</label>
 					</div>
 				</div>
-				<div class="col-6 align-self-end" v-cloak>
+				<div class="col-4 align-self-end" v-cloak>
 					表示情報：
 					<div v-for="category in categorys" class="form-check form-check-inline">
 						<input class="form-check-input" type="radio" v-bind:name="category.id" v-bind:id="category.id"
 							v-model="nowcategory" v-bind:value="category.id" v-on:change="categoryChange">
 						<label class="form-check-label" v-bind:for="category.id">{{ category.name }}</label>
 					</div>
+				</div>
+				<div class="col-4 align-self-end" v-cloak>
+					更新日：{{ lastdate }}
 				</div>
 			</div>
 			<div id="svghbar"></div>
@@ -153,7 +156,7 @@
 				<div class="col-md-8 align-self-start" v-cloak>
 					<template>
 						<div>
-							日付指定：{{ slider.date.value }}
+							日付指定：{{ date }}
 							<vue-slider v-model="slider.date.value" :data="slider.date.data" v-on:change="sliderChange">
 							</vue-slider>
 						</div>

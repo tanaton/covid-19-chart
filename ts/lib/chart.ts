@@ -52,13 +52,19 @@ export const base64encode = (str: string): string => window.btoa(unescape(encode
 export const base64decode = (str: string): string => decodeURIComponent(escape(window.atob(str)));
 export const atoi = (str: string): number => parseInt(str, 10);
 export const strToDate = (str: string): Date => {
+	if (str.length < 8) {
+		// 日付文字列ではないかも
+		return new Date(2020, 3, 1);
+	}
 	const datearray = [str.slice(0, 4), str.slice(4, 6), str.slice(6)].map<number>(atoi);
 	// 月は-1しないと期待通りに動作しない
 	return new Date(datearray[0], datearray[1] - 1, datearray[2]);
 }
+export const formatDateStr = (str: string): string => str.length < 8 ? "2020/04/01" : [str.slice(0, 4), str.slice(4, 6), str.slice(6)].join("/");
 export const categoryDefault: NumberStr = "confirmed";
 export const scaleDefault: ScaleStr = "liner";
 export const countryDefault = "Japan";
+export const datestrDefault = timeFormat(new Date(Date.now() - dayMillisecond * 2));
 // https://www.colordic.org/m
 export const metroColor = [
 	"#ff9500",	// 銀座線オレンジ(2014)Ginza Line Orange

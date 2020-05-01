@@ -278,6 +278,9 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 		}
 		this.query = this.createDefaultQuery();
 		this.query.loadSearchParams(query);
+		for (const country of dispdata.countrys) {
+			country.checked = false;
+		}
 		this.query.get("country").split("|").forEach(it => {
 			const country = decodeURI(it);
 			if (this.countryIndex[country] !== undefined) {
@@ -331,8 +334,8 @@ const dispdata: Display = {
 	countrys: [],
 	slider: {
 		xaxis: {
-			value: [],
-			data: []
+			value: [chart.datestrDefault, chart.datestrDefault],
+			data: [chart.datestrDefault]
 		}
 	},
 	nowcategory: chart.categoryDefault,
@@ -343,6 +346,11 @@ const vm = new Vue({
 	data: dispdata,
 	components: {
 		'VueSlider': VueSlider,
+	},
+	computed: {
+		startdate: () => chart.formatDateStr(dispdata.slider.xaxis.value[0]),
+		enddate: () => chart.formatDateStr(dispdata.slider.xaxis.value[1]),
+		lastdate: () => chart.formatDateStr(dispdata.slider.xaxis.data[dispdata.slider.xaxis.data.length - 1])
 	},
 	methods: {
 		categoryChange: () => cli.update([["category", dispdata.nowcategory]]),

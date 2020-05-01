@@ -282,8 +282,8 @@ const dispdata: Display = {
 	],
 	slider: {
 		date: {
-			value: "20200401",
-			data: []
+			value: chart.datestrDefault,
+			data: [chart.datestrDefault]
 		}
 	},
 	ranks: [
@@ -301,6 +301,10 @@ const vm = new Vue({
 	data: dispdata,
 	components: {
 		'VueSlider': VueSlider,
+	},
+	computed: {
+		date: () => chart.formatDateStr(dispdata.slider.date.value),
+		lastdate: () => chart.formatDateStr(dispdata.slider.date.data[dispdata.slider.date.data.length - 1])
 	},
 	methods: {
 		categoryChange: () => cli.update([["category", dispdata.nowcategory]]),

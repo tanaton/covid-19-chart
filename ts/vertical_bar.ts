@@ -284,8 +284,8 @@ const dispdata: Display = {
 	countrys: [],
 	slider: {
 		xaxis: {
-			value: [],
-			data: []
+			value: [chart.datestrDefault, chart.datestrDefault],
+			data: [chart.datestrDefault]
 		}
 	},
 	nowcategory: chart.categoryDefault,
@@ -298,14 +298,17 @@ const vm = new Vue({
 	components: {
 		'VueSlider': VueSlider,
 	},
+	computed: {
+		nowcountrystr: () => chart.base64decode(dispdata.nowcountry),
+		startdate: () => chart.formatDateStr(dispdata.slider.xaxis.value[0]),
+		enddate: () => chart.formatDateStr(dispdata.slider.xaxis.value[1]),
+		lastdate: () => chart.formatDateStr(dispdata.slider.xaxis.data[dispdata.slider.xaxis.data.length - 1])
+	},
 	methods: {
 		categoryChange: () => cli.update([["category", dispdata.nowcategory]]),
 		yscaleChange: () => cli.update([["yscale", dispdata.nowyscale]]),
 		countryChange: () => cli.update([["country", chart.base64decode(dispdata.nowcountry)]]),
 		sliderChange: () => cli.update([["startdate", dispdata.slider.xaxis.value[0]], ["enddate", dispdata.slider.xaxis.value[1]]])
-	},
-	computed: {
-		nowcountrystr: () => chart.base64decode(dispdata.nowcountry)
 	}
 });
 const cli = new Client(location.search);
