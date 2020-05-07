@@ -26,5 +26,11 @@ module.exports = {
 				test: /\.ts$/, loader: 'ts-loader'
 			}
 		]
+	},
+	optimization: {
+		splitChunks: {
+			name: 'vendor',
+			chunks: 'initial'
+		}
 	}
 }
