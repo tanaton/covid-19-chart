@@ -21,9 +21,22 @@ type ChartDataCountrys = {
 	}
 }
 
+const XScaleType = chart.ScaleStr;
 type XScaleType = chart.ScaleStr;
-type QueryStr = "category" | "rank" | "xscale" | "date";
-type RankStr = "10" | "30" | "50" | "100";
+const QueryStr = {
+	category: "category",
+	rank: "rank",
+	xscale: "xscale",
+	date: "date"
+} as const;
+type QueryStr = typeof QueryStr[keyof typeof QueryStr];
+const RankStr = {
+	rank10: "10",
+	rank30: "30",
+	rank50: "50",
+	rank100: "100"
+} as const;
+type RankStr = typeof RankStr[keyof typeof RankStr];
 
 type Display = {
 	categorys: Array<{ id: chart.NumberStr, name: string }>;
@@ -165,11 +178,11 @@ class HorizontalBarChart extends chart.BaseChart<XScaleType> implements chart.IC
 	public resetScale(scale: XScaleType) {
 		const xd = this.hbar_x.domain();
 		switch (scale) {
-			case "liner":
+			case XScaleType.liner:
 				this.hbar_x = d3.scaleLinear();
 				xd[0] = 0;
 				break;
-			case "log":
+			case XScaleType.log:
 				this.hbar_x = d3.scaleLog().clamp(true);
 				xd[0] = 1;
 				break;
@@ -237,10 +250,10 @@ class Client extends client.BaseClient<QueryStr, XScaleType> implements client.I
 	}
 	public createDefaultQuery(): client.Query<QueryStr> {
 		const q = new client.Query<QueryStr>();
-		q.set("category", chart.categoryDefault);
-		q.set("rank", "30");
-		q.set("xscale", chart.scaleDefault);
-		q.set("date", this.date);
+		q.set(QueryStr.category, chart.categoryDefault);
+		q.set(QueryStr.rank, "30");
+		q.set(QueryStr.xscale, chart.scaleDefault);
+		q.set(QueryStr.date, this.date);
 		return q;
 	}
 	public loadQuery(query: string): void {
@@ -249,10 +262,10 @@ class Client extends client.BaseClient<QueryStr, XScaleType> implements client.I
 		}
 		this.query = this.createDefaultQuery();
 		this.query.loadSearchParams(query);
-		dispdata.nowcategory = this.query.get("category") as chart.NumberStr;
-		dispdata.nowrank = this.query.get("rank") as RankStr;
-		dispdata.nowxscale = this.query.get("xscale") as XScaleType;
-		dispdata.slider.date.value = this.query.get("date");
+		dispdata.nowcategory = this.query.get(QueryStr.category) as chart.NumberStr;
+		dispdata.nowrank = this.query.get(QueryStr.rank) as RankStr;
+		dispdata.nowxscale = this.query.get(QueryStr.xscale) as XScaleType;
+		dispdata.slider.date.value = this.query.get(QueryStr.date);
 	}
 	public initQuery(query: string = ""): void {
 		const data = dispdata.slider.date.data;
@@ -272,13 +285,13 @@ class Client extends client.BaseClient<QueryStr, XScaleType> implements client.I
 
 const dispdata: Display = {
 	categorys: [
-		{ id: "confirmed", name: "感染数" },
-		{ id: "deaths", name: "死亡数" },
-		{ id: "recovered", name: "回復数" }
+		{ id: chart.NumberStr.confirmed, name: "感染数" },
+		{ id: chart.NumberStr.deaths, name: "死亡数" },
+		{ id: chart.NumberStr.recovered, name: "回復数" }
 	],
 	xscales: [
-		{ id: "liner", name: "線形" },
-		{ id: "log", name: "対数" },
+		{ id: XScaleType.liner, name: "線形" },
+		{ id: XScaleType.log, name: "対数" },
 	],
 	slider: {
 		date: {
@@ -287,14 +300,14 @@ const dispdata: Display = {
 		}
 	},
 	ranks: [
-		{ id: "rank10", name: "上位10ヶ国", value: "10" },
-		{ id: "rank30", name: "上位30ヶ国", value: "30" },
-		{ id: "rank50", name: "上位50ヶ国", value: "50" },
-		{ id: "rank100", name: "上位100ヶ国", value: "100" },
+		{ id: "rank10", name: "上位10ヶ国", value: RankStr.rank10 },
+		{ id: "rank30", name: "上位30ヶ国", value: RankStr.rank30 },
+		{ id: "rank50", name: "上位50ヶ国", value: RankStr.rank50 },
+		{ id: "rank100", name: "上位100ヶ国", value: RankStr.rank100 },
 	],
 	nowcategory: chart.categoryDefault,
 	nowxscale: chart.scaleDefault,
-	nowrank: "30",
+	nowrank: RankStr.rank30,
 };
 const vm = new Vue({
 	el: "#container",
@@ -307,10 +320,10 @@ const vm = new Vue({
 		lastdate: () => chart.formatDateStr(dispdata.slider.date.data[dispdata.slider.date.data.length - 1])
 	},
 	methods: {
-		categoryChange: () => cli.update([["category", dispdata.nowcategory]]),
-		xscaleChange: () => cli.update([["xscale", dispdata.nowxscale]]),
-		sliderChange: () => cli.update([["date", dispdata.slider.date.value]]),
-		rankChange: () => cli.update([["rank", dispdata.nowrank]])
+		categoryChange: () => cli.update([[QueryStr.category, dispdata.nowcategory]]),
+		xscaleChange: () => cli.update([[QueryStr.xscale, dispdata.nowxscale]]),
+		sliderChange: () => cli.update([[QueryStr.date, dispdata.slider.date.value]]),
+		rankChange: () => cli.update([[QueryStr.rank, dispdata.nowrank]])
 	}
 });
 const cli = new Client(location.search);

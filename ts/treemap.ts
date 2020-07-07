@@ -22,7 +22,11 @@ type HierarchyDatum = {
 	children?: HierarchyDatum[];
 }
 
-type QueryStr = "category" | "date";
+const QueryStr = {
+	category: "category",
+	date: "date"
+} as const;
+type QueryStr = typeof QueryStr[keyof typeof QueryStr];
 
 type Display = {
 	confirmed_now: string;
@@ -247,8 +251,8 @@ class Client extends client.BaseClient<QueryStr, unknown> implements client.ICli
 	}
 	public createDefaultQuery(): client.Query<QueryStr> {
 		const q = new client.Query<QueryStr>();
-		q.set("category", chart.categoryDefault);
-		q.set("date", this.date);
+		q.set(QueryStr.category, chart.categoryDefault);
+		q.set(QueryStr.date, this.date);
 		return q;
 	}
 	public loadQuery(query: string): void {
@@ -257,8 +261,8 @@ class Client extends client.BaseClient<QueryStr, unknown> implements client.ICli
 		}
 		this.query = this.createDefaultQuery();
 		this.query.loadSearchParams(query);
-		dispdata.nowcategory = this.query.get("category") as chart.NumberStr;
-		dispdata.slider.date.value = this.query.get("date");
+		dispdata.nowcategory = this.query.get(QueryStr.category) as chart.NumberStr;
+		dispdata.slider.date.value = this.query.get(QueryStr.date);
 	}
 	public initQuery(query: string = ""): void {
 		const data = dispdata.slider.date.data;
@@ -280,9 +284,9 @@ const dispdata: Display = {
 	deaths_now: "",
 	recovered_now: "",
 	categorys: [
-		{ id: "confirmed", name: "感染数" },
-		{ id: "deaths", name: "死亡数" },
-		{ id: "recovered", name: "回復数" }
+		{ id: chart.NumberStr.confirmed, name: "感染数" },
+		{ id: chart.NumberStr.deaths, name: "死亡数" },
+		{ id: chart.NumberStr.recovered, name: "回復数" }
 	],
 	slider: {
 		date: {
@@ -303,8 +307,8 @@ const vm = new Vue({
 		lastdate: () => chart.formatDateStr(dispdata.slider.date.data[dispdata.slider.date.data.length - 1])
 	},
 	methods: {
-		categoryChange: () => cli.update([["category", dispdata.nowcategory]]),
-		sliderChange: () => cli.update([["date", dispdata.slider.date.value]])
+		categoryChange: () => cli.update([[QueryStr.category, dispdata.nowcategory]]),
+		sliderChange: () => cli.update([[QueryStr.date, dispdata.slider.date.value]])
 	}
 });
 const cli = new Client(location.search);

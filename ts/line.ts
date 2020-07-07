@@ -14,8 +14,16 @@ type Context = {
 	values: ChartPathData[];
 }
 
+const YScaleType = chart.ScaleStr;
 type YScaleType = chart.ScaleStr;
-type QueryStr = "country" | "category" | "yscale" | "startdate" | "enddate";
+const QueryStr = {
+	country: "country",
+	category: "category",
+	yscale: "yscale",
+	startdate: "startdate",
+	enddate: "enddate"
+} as const;
+type QueryStr = typeof QueryStr[keyof typeof QueryStr];
 
 type Display = {
 	categorys: Array<{ id: chart.NumberStr, name: string }>;
@@ -189,11 +197,11 @@ class LineChart extends chart.BaseChart<YScaleType> implements chart.IChart<YSca
 	public resetScale(scale: YScaleType): void {
 		const line_yd = this.line_y.domain();
 		switch (scale) {
-			case "liner":
+			case YScaleType.liner:
 				this.line_y = d3.scaleLinear();
 				line_yd[0] = 0;
 				break;
-			case "log":
+			case YScaleType.log:
 				this.line_y = d3.scaleLog().clamp(true);
 				line_yd[0] = 1;
 				break;
@@ -265,11 +273,11 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 	}
 	public createDefaultQuery(): client.Query<QueryStr> {
 		const q = new client.Query<QueryStr>();
-		q.set("country", this.countrystr);
-		q.set("category", chart.categoryDefault);
-		q.set("yscale", chart.scaleDefault);
-		q.set("startdate", this.startdate);
-		q.set("enddate", this.enddate);
+		q.set(QueryStr.country, this.countrystr);
+		q.set(QueryStr.category, chart.categoryDefault);
+		q.set(QueryStr.yscale, chart.scaleDefault);
+		q.set(QueryStr.startdate, this.startdate);
+		q.set(QueryStr.enddate, this.enddate);
 		return q;
 	}
 	public loadQuery(query: string): void {
@@ -281,17 +289,17 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 		for (const country of dispdata.countrys) {
 			country.checked = false;
 		}
-		this.query.get("country").split("|").forEach(it => {
+		this.query.get(QueryStr.country).split("|").forEach(it => {
 			const country = decodeURI(it);
 			if (this.countryIndex[country] !== undefined) {
 				dispdata.countrys[this.countryIndex[country]].checked = true;
 			}
 		})
-		dispdata.nowcategory = this.query.get("category") as chart.NumberStr;
-		dispdata.nowyscale = this.query.get("yscale") as YScaleType;
+		dispdata.nowcategory = this.query.get(QueryStr.category) as chart.NumberStr;
+		dispdata.nowyscale = this.query.get(QueryStr.yscale) as YScaleType;
 		dispdata.slider.xaxis.value = [
-			this.query.get("startdate"),
-			this.query.get("enddate")
+			this.query.get(QueryStr.startdate),
+			this.query.get(QueryStr.enddate)
 		];
 	}
 	public static countryListStr(): string {
@@ -323,13 +331,13 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 
 const dispdata: Display = {
 	categorys: [
-		{ id: "confirmed", name: "感染数" },
-		{ id: "deaths", name: "死亡数" },
-		{ id: "recovered", name: "回復数" }
+		{ id: chart.NumberStr.confirmed, name: "感染数" },
+		{ id: chart.NumberStr.deaths, name: "死亡数" },
+		{ id: chart.NumberStr.recovered, name: "回復数" }
 	],
 	yscales: [
-		{ id: "liner", name: "線形" },
-		{ id: "log", name: "対数" },
+		{ id: YScaleType.liner, name: "線形" },
+		{ id: YScaleType.log, name: "対数" },
 	],
 	countrys: [],
 	slider: {
@@ -353,20 +361,20 @@ const vm = new Vue({
 		lastdate: () => chart.formatDateStr(dispdata.slider.xaxis.data[dispdata.slider.xaxis.data.length - 1])
 	},
 	methods: {
-		categoryChange: () => cli.update([["category", dispdata.nowcategory]]),
-		yscaleChange: () => cli.update([["yscale", dispdata.nowyscale]]),
-		countryChange: () => cli.update([["country", Client.countryListStr()]]),
+		categoryChange: () => cli.update([[QueryStr.category, dispdata.nowcategory]]),
+		yscaleChange: () => cli.update([[QueryStr.yscale, dispdata.nowyscale]]),
+		countryChange: () => cli.update([[QueryStr.country, Client.countryListStr()]]),
 		countryCheckAllClick: () => {
 			for (const country of dispdata.countrys) {
 				country.checked = true;
 			}
-			cli.update([["country", Client.countryListStr()]]);
+			cli.update([[QueryStr.country, Client.countryListStr()]]);
 		},
 		countryUncheckAllClick: () => {
 			for (const country of dispdata.countrys) {
 				country.checked = false;
 			}
-			cli.update([["country", ""]]);
+			cli.update([[QueryStr.country, ""]]);
 		},
 		countryCheckBest10Click: () => {
 			const indexmap: { [key in string]: number } = {};
@@ -384,9 +392,9 @@ const vm = new Vue({
 				const index = indexmap[datalist[i].name];
 				dispdata.countrys[index].checked = true;
 			}
-			cli.update([["country", Client.countryListStr()]]);
+			cli.update([[QueryStr.country, Client.countryListStr()]]);
 		},
-		sliderChange: () => cli.update([["startdate", dispdata.slider.xaxis.value[0]], ["enddate", dispdata.slider.xaxis.value[1]]])
+		sliderChange: () => cli.update([[QueryStr.startdate, dispdata.slider.xaxis.value[0]], [QueryStr.enddate, dispdata.slider.xaxis.value[1]]])
 	}
 });
 const cli = new Client(location.search);

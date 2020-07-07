@@ -14,8 +14,16 @@ type ChartPathData = {
 	low: number;
 }
 
+const YScaleType = chart.ScaleStr;
 type YScaleType = chart.ScaleStr;
-type QueryStr = "country" | "category" | "yscale" | "startdate" | "enddate";
+const QueryStr = {
+	country: "country",
+	category: "category",
+	yscale: "yscale",
+	startdate: "startdate",
+	enddate: "enddate"
+} as const;
+type QueryStr = typeof QueryStr[keyof typeof QueryStr];
 
 type Display = {
 	confirmed_now: string;
@@ -220,11 +228,11 @@ class CandleChart extends chart.BaseChart<YScaleType> implements chart.IChart<YS
 	public resetScale(scale: YScaleType) {
 		const line_yd = this.candle_y.domain();
 		switch (scale) {
-			case "liner":
+			case YScaleType.liner:
 				this.candle_y = this.candle_yLiner;
 				line_yd[0] = 0;
 				break;
-			case "log":
+			case YScaleType.log:
 				this.candle_y = this.candle_yLog;
 				line_yd[0] = 1;
 				break;
@@ -294,11 +302,11 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 	}
 	public createDefaultQuery(): client.Query<QueryStr> {
 		const q = new client.Query<QueryStr>();
-		q.set("country", chart.countryDefault);
-		q.set("category", chart.categoryDefault);
-		q.set("yscale", chart.scaleDefault);
-		q.set("startdate", this.startdate);
-		q.set("enddate", this.enddate);
+		q.set(QueryStr.country, chart.countryDefault);
+		q.set(QueryStr.category, chart.categoryDefault);
+		q.set(QueryStr.yscale, chart.scaleDefault);
+		q.set(QueryStr.startdate, this.startdate);
+		q.set(QueryStr.enddate, this.enddate);
 		return q;
 	}
 	public loadQuery(query: string): void {
@@ -308,11 +316,11 @@ class Client extends client.BaseClient<QueryStr, YScaleType> implements client.I
 		this.query = this.createDefaultQuery();
 		this.query.loadSearchParams(query);
 		dispdata.nowcountry = chart.base64encode(this.query.get("country"));
-		dispdata.nowcategory = this.query.get("category") as chart.NumberStr;
-		dispdata.nowyscale = this.query.get("yscale") as YScaleType;
+		dispdata.nowcategory = this.query.get(QueryStr.category) as chart.NumberStr;
+		dispdata.nowyscale = this.query.get(QueryStr.yscale) as YScaleType;
 		dispdata.slider.xaxis.value = [
-			this.query.get("startdate"),
-			this.query.get("enddate")
+			this.query.get(QueryStr.startdate),
+			this.query.get(QueryStr.enddate)
 		];
 	}
 	public initQuery(query: string = ""): void {
@@ -337,13 +345,13 @@ const dispdata: Display = {
 	deaths_now: "",
 	recovered_now: "",
 	categorys: [
-		{ id: "confirmed", name: "感染数" },
-		{ id: "deaths", name: "死亡数" },
-		{ id: "recovered", name: "回復数" }
+		{ id: chart.NumberStr.confirmed, name: "感染数" },
+		{ id: chart.NumberStr.deaths, name: "死亡数" },
+		{ id: chart.NumberStr.recovered, name: "回復数" }
 	],
 	yscales: [
-		{ id: "liner", name: "線形" },
-		{ id: "log", name: "対数" },
+		{ id: YScaleType.liner, name: "線形" },
+		{ id: YScaleType.log, name: "対数" },
 	],
 	countrys: [],
 	slider: {
@@ -369,10 +377,10 @@ const vm = new Vue({
 		lastdate: () => chart.formatDateStr(dispdata.slider.xaxis.data[dispdata.slider.xaxis.data.length - 1])
 	},
 	methods: {
-		categoryChange: () => cli.update([["category", dispdata.nowcategory]]),
-		yscaleChange: () => cli.update([["yscale", dispdata.nowyscale]]),
-		countryChange: () => cli.update([["country", chart.base64decode(dispdata.nowcountry)]]),
-		sliderChange: () => cli.update([["startdate", dispdata.slider.xaxis.value[0]], ["enddate", dispdata.slider.xaxis.value[1]]])
+		categoryChange: () => cli.update([[QueryStr.category, dispdata.nowcategory]]),
+		yscaleChange: () => cli.update([[QueryStr.yscale, dispdata.nowyscale]]),
+		countryChange: () => cli.update([[QueryStr.country, chart.base64decode(dispdata.nowcountry)]]),
+		sliderChange: () => cli.update([[QueryStr.startdate, dispdata.slider.xaxis.value[0]], [QueryStr.enddate, dispdata.slider.xaxis.value[1]]])
 	}
 });
 let cli = new Client(location.search);

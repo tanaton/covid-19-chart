@@ -22,9 +22,17 @@ export type WorldSummary = {
 	cdr: CDR
 }
 
-export type NumberStr = "confirmed" | "deaths" | "recovered";
-export type ScaleStr = "liner" | "log";
-export type NumberIndexType = { readonly [key in NumberStr]: number };
+export const NumberStr = {
+	confirmed: "confirmed",
+	deaths: "deaths",
+	recovered: "recovered"
+} as const;
+export type NumberStr = typeof NumberStr[keyof typeof NumberStr];
+export const ScaleStr = {
+	liner: "liner",
+	log: "log"
+} as const;
+export type ScaleStr = typeof ScaleStr[keyof typeof ScaleStr];
 
 export interface IChart<ScaleT> {
 	dispose(): void;
@@ -35,7 +43,7 @@ export interface IChart<ScaleT> {
 	draw(): void;
 }
 
-export const NumberIndex: NumberIndexType = {
+export const NumberIndex: { [key in NumberStr]: number } = {
 	confirmed: 0,
 	deaths: 1,
 	recovered: 2,
@@ -61,8 +69,8 @@ export const strToDate = (str: string): Date => {
 	return new Date(datearray[0], datearray[1] - 1, datearray[2]);
 }
 export const formatDateStr = (str: string): string => str.length < 8 ? "2020/04/01" : [str.slice(0, 4), str.slice(4, 6), str.slice(6)].join("/");
-export const categoryDefault: NumberStr = "confirmed";
-export const scaleDefault: ScaleStr = "liner";
+export const categoryDefault = NumberStr.confirmed;
+export const scaleDefault = ScaleStr.liner;
 export const countryDefault = "Japan";
 export const datestrDefault = timeFormat(new Date(Date.now() - dayMillisecond * 2));
 // https://www.colordic.org/m
