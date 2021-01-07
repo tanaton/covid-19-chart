@@ -22,17 +22,17 @@
   "homepage": "https://github.com/tanaton/covid-19-chart#readme",
   "devDependencies": {
     "ts-loader": "^6.2.1",
-    "typescript": "^3.8.3",
-    "webpack": "^4.43.0",
-    "webpack-cli": "^3.3.10",
-    "webpack-dev-server": "^3.10.3"
+    "typescript": "^3.9.7",
+    "webpack": "^4.44.1",
+    "webpack-cli": "^3.3.12",
+    "webpack-dev-server": "^3.11.0"
   },
   "dependencies": {
     "@types/d3": "^5.7.2",
     "@types/vue": "^2.0.0",
     "d3": "^5.16.0",
     "vue": "^2.6.11",
-    "vue-class-component": "^7.2.3",
-    "vue-slider-component": "^3.1.2"
+    "vue-class-component": "^7.2.5",
+    "vue-slider-component": "^3.2.3"
   }
 }
