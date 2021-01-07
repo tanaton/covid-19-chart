@@ -425,7 +425,7 @@ func getFileItemList() ([]fileitem, error) {
 		return nil, fmt.Errorf("データファイルがありませんでした。")
 	}
 	fl = fl[:l]
-	sort.Slice(fl, func(i, j int) bool { return fl[i].t.After(fl[j].t) })
+	sort.Slice(fl, func(i, j int) bool { return fl[j].t.After(fl[i].t) })
 	return fl, nil
 }
 
