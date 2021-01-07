@@ -369,13 +369,39 @@ func updateDataFile() error {
 	if err := checkAndCreateDir(ConvertDataPath); err != nil {
 		return err
 	}
-	dl, err := ioutil.ReadDir(RepoDataPath)
+	fl, err := getFileItemList()
 	if err != nil {
 		return err
 	}
 	ws := &WorldSummary{
 		Countrys: make(map[string]CountrySummary),
 	}
+	for _, it := range fl {
+		cmap, err := convertJSON(it.t, it.name)
+		if err != nil {
+			continue
+		}
+		appendSummary(ws, cmap, it.t)
+	}
+	for _, it := range ws.Countrys {
+		ws.CDR[0] += it.CDR[0]
+		ws.CDR[1] += it.CDR[1]
+		ws.CDR[2] += it.CDR[2]
+	}
+	return storeSummary(ws)
+}
+
+type fileitem struct {
+	t    time.Time
+	name string
+}
+
+func getFileItemList() ([]fileitem, error) {
+	dl, err := ioutil.ReadDir(RepoDataPath)
+	if err != nil {
+		return nil, err
+	}
+	fl := make([]fileitem, 0, len(dl))
 	for _, it := range dl {
 		if it.IsDir() {
 			continue
@@ -389,19 +415,18 @@ func updateDataFile() error {
 		if err != nil {
 			continue
 		}
-		cmap, err := convertJSON(t, name)
-		if err != nil {
-			continue
-		}
-		// ファイル名の並び的には2021年になるとぶっ壊れるけどそのころにはコロナも落ち着いている事を期待
-		appendSummary(ws, cmap, t)
+		fl = append(fl, fileitem{
+			t:    t,
+			name: name,
+		})
 	}
-	for _, it := range ws.Countrys {
-		ws.CDR[0] += it.CDR[0]
-		ws.CDR[1] += it.CDR[1]
-		ws.CDR[2] += it.CDR[2]
+	l := len(fl)
+	if l == 0 {
+		return nil, fmt.Errorf("データファイルがありませんでした。")
 	}
-	return storeSummary(ws)
+	fl = fl[:l]
+	sort.Slice(fl, func(i, j int) bool { return fl[i].t.After(fl[j].t) })
+	return fl, nil
 }
 
 func convertJSON(t time.Time, name string) (map[string]*Dataset, error) {
