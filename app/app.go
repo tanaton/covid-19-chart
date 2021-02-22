@@ -135,7 +135,7 @@ func (app *application) Run(ctx context.Context) error {
 	}
 	monich := make(chan resultMonitor)
 	rich := make(chan responseInfo, 32)
-	jsondata := [3]*aliasHandler{&aliasHandler{}, &aliasHandler{}, &aliasHandler{}}
+	jsondata := [3]*aliasHandler{}
 	jsondata[0].setPath(filepath.Join(ConvertDataPath, NowJSONDefaultName))
 	jsondata[1].setPath(filepath.Join(ConvertDataPath, NowJSONDefaultName))
 	jsondata[2].setPath(filepath.Join(ConvertDataPath, NowJSONDefaultName))
