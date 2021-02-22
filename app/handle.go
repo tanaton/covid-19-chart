@@ -10,15 +10,15 @@ import (
 )
 
 type GetMonitoringHandler struct {
-	ch <-chan ResultMonitor
+	ch <-chan resultMonitor
 }
 
-func (h *GetMonitoringHandler) getResultMonitor(ctx context.Context) (ResultMonitor, error) {
-	var res ResultMonitor
-	lctx, lcancel := context.WithTimeout(ctx, time.Second*3)
-	defer lcancel()
+func (h *GetMonitoringHandler) getResultMonitor(ctx context.Context) (resultMonitor, error) {
+	var res resultMonitor
+	ctx, cancel := context.WithTimeout(ctx, time.Second*3)
+	defer cancel()
 	select {
-	case <-lctx.Done():
+	case <-ctx.Done():
 		return res, errors.New("timeout")
 	case res = <-h.ch:
 		log.Debugw("受信！ getResultMonitor", "data", res)
@@ -39,28 +39,28 @@ func (h *GetMonitoringHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-type Alias interface {
-	GetPath() string
-	SetPath(p string)
+type alias interface {
+	getPath() string
+	setPath(p string)
 }
 
-type AliasHandler struct {
+type aliasHandler struct {
 	sync.RWMutex
 	path string
 }
 
-func (h *AliasHandler) GetPath() string {
+func (h *aliasHandler) getPath() string {
 	h.RLock()
 	defer h.RUnlock()
 	return h.path
 }
 
-func (h *AliasHandler) SetPath(p string) {
+func (h *aliasHandler) setPath(p string) {
 	h.Lock()
 	defer h.Unlock()
 	h.path = p
 }
 
-func (h *AliasHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, h.GetPath())
+func (h *aliasHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, h.getPath())
 }

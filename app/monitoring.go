@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-type ResponseInfo struct {
+type responseInfo struct {
 	uri       string
 	userAgent string
 	status    int
@@ -20,7 +20,7 @@ type ResponseInfo struct {
 	protocol  string
 	addr      string
 }
-type ResultMonitor struct {
+type resultMonitor struct {
 	err                 error
 	ResponseTimeSum     time.Duration
 	ResponseCount       uint
@@ -29,15 +29,15 @@ type ResultMonitor struct {
 }
 type MonitoringResponseWriter struct {
 	http.ResponseWriter
-	ri   ResponseInfo
-	rich chan<- ResponseInfo
+	ri   responseInfo
+	rich chan<- responseInfo
 }
 type MonitoringResponseWriterWithCloseNotify struct {
 	*MonitoringResponseWriter
 }
 
 // MonitoringHandler モニタリング用ハンドラ生成
-func MonitoringHandler(h http.Handler, rich chan<- ResponseInfo) http.Handler {
+func MonitoringHandler(h http.Handler, rich chan<- responseInfo) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mrw := newMonitoringResponseWriter(w, r, rich)
 		defer mrw.Close()
@@ -50,10 +50,10 @@ func MonitoringHandler(h http.Handler, rich chan<- ResponseInfo) http.Handler {
 	})
 }
 
-func newMonitoringResponseWriter(w http.ResponseWriter, r *http.Request, rich chan<- ResponseInfo) *MonitoringResponseWriter {
+func newMonitoringResponseWriter(w http.ResponseWriter, r *http.Request, rich chan<- responseInfo) *MonitoringResponseWriter {
 	return &MonitoringResponseWriter{
 		ResponseWriter: w,
-		ri: ResponseInfo{
+		ri: responseInfo{
 			uri:       r.RequestURI,
 			userAgent: r.UserAgent(),
 			start:     time.Now().UTC(),

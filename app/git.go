@@ -16,7 +16,7 @@ func updateGitData(ctx context.Context) error {
 	}
 	err = updateGit(ctx, GitPath)
 	if err == git.NoErrAlreadyUpToDate {
-		return NoErrUpdate
+		return errNoUpdate
 	} else if err != nil {
 		return err
 	}

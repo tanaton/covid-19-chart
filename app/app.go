@@ -17,7 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/NYTimes/gziphandler"
@@ -94,12 +93,12 @@ type WorldSummary struct {
 	CDR      [3]uint64                 `json:"cdr"`
 }
 
-type Srv struct {
+type serverItem struct {
 	s *http.Server
 	f func(s *http.Server) error
 }
 
-type App struct {
+type application struct {
 	wg sync.WaitGroup
 }
 
@@ -111,7 +110,7 @@ var gzipContentTypeList = []string{
 	"application/json",
 }
 var log *zap.SugaredLogger
-var NoErrUpdate = fmt.Errorf("データ未更新")
+var errNoUpdate = fmt.Errorf("データ未更新")
 
 func init() {
 	//logger, err := zap.NewDevelopment()
@@ -123,33 +122,33 @@ func init() {
 	mime.AddExtensionType(".json", "application/json; charset=utf-8")
 }
 
-func New() *App {
-	return &App{}
+func New() *application {
+	return &application{}
 }
 
-func (app *App) Run(ctx context.Context) error {
+func (app *application) Run(ctx context.Context) error {
+	// 終了管理機能の起動
+	ctx, stop := signal.NotifyContext(ctx)
+	defer stop()
 	if err := checkAndCreateDir(PublicPath); err != nil {
 		return err
 	}
-	monich := make(chan ResultMonitor)
-	rich := make(chan ResponseInfo, 32)
-	jsondata := [3]*AliasHandler{&AliasHandler{}, &AliasHandler{}, &AliasHandler{}}
-	jsondata[0].SetPath(filepath.Join(ConvertDataPath, NowJSONDefaultName))
-	jsondata[1].SetPath(filepath.Join(ConvertDataPath, NowJSONDefaultName))
-	jsondata[2].SetPath(filepath.Join(ConvertDataPath, NowJSONDefaultName))
-
-	// 終了管理機能の起動
-	ctx, exitch := app.startExitManageProc(ctx)
+	monich := make(chan resultMonitor)
+	rich := make(chan responseInfo, 32)
+	jsondata := [3]*aliasHandler{&aliasHandler{}, &aliasHandler{}, &aliasHandler{}}
+	jsondata[0].setPath(filepath.Join(ConvertDataPath, NowJSONDefaultName))
+	jsondata[1].setPath(filepath.Join(ConvertDataPath, NowJSONDefaultName))
+	jsondata[2].setPath(filepath.Join(ConvertDataPath, NowJSONDefaultName))
 
 	// データ更新
 	updateData(ctx, true)
-	setJSONDataPath([]Alias{jsondata[0], jsondata[1], jsondata[2]})
+	setJSONDataPath([]alias{jsondata[0], jsondata[1], jsondata[2]})
 
 	// サーバ起動
 	app.wg.Add(1)
 	go app.webServerMonitoringProc(ctx, rich, monich)
 	app.wg.Add(1)
-	go app.updateDataProc(ctx, []Alias{jsondata[0], jsondata[1], jsondata[2]})
+	go app.updateDataProc(ctx, []alias{jsondata[0], jsondata[1], jsondata[2]})
 
 	// URL設定
 	http.Handle("/api/unko.in/1/monitor", &GetMonitoringHandler{ch: monich})
@@ -160,19 +159,19 @@ func (app *App) Run(ctx context.Context) error {
 
 	ghfunc, err := gziphandler.GzipHandlerWithOpts(gziphandler.CompressionLevel(gzip.BestSpeed), gziphandler.ContentTypes(gzipContentTypeList))
 	if err != nil {
-		exitch <- struct{}{}
+		stop()
 		log.Infow("サーバーハンドラの作成に失敗しました。", "error", err)
 		return app.shutdown(ctx)
 	}
 	h := MonitoringHandler(ghfunc(http.DefaultServeMux), rich)
 
 	// サーバ情報
-	sl := []Srv{
-		Srv{
+	sl := []serverItem{
+		{
 			s: &http.Server{Addr: ":8080", Handler: h},
 			f: func(s *http.Server) error { return s.ListenAndServe() },
 		},
-		Srv{
+		{
 			s: &http.Server{Handler: h},
 			f: func(s *http.Server) error { return s.Serve(autocert.NewListener(RootDomain)) },
 		},
@@ -186,7 +185,7 @@ func (app *App) Run(ctx context.Context) error {
 	return app.shutdown(ctx, sl...)
 }
 
-func (srv Srv) startServer(wg *sync.WaitGroup) {
+func (srv serverItem) startServer(wg *sync.WaitGroup) {
 	defer wg.Done()
 	log.Infow("Srv.startServer", "Addr", srv.s.Addr)
 	// サーバ起動
@@ -201,67 +200,35 @@ func (srv Srv) startServer(wg *sync.WaitGroup) {
 	}
 }
 
-func (app *App) shutdown(ctx context.Context, sl ...Srv) error {
+func (app *application) shutdown(ctx context.Context, sl ...serverItem) error {
 	// シグナル等でサーバを中断する
 	<-ctx.Done()
 	// シャットダウン処理用コンテキストの用意
-	sctx, scancel := context.WithCancel(context.Background())
-	defer scancel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	for _, srv := range sl {
 		app.wg.Add(1)
 		go func(ctx context.Context, srv *http.Server) {
-			sctx, sscancel := context.WithTimeout(ctx, time.Second*10)
+			ctx, cancel := context.WithTimeout(ctx, time.Second*10)
 			defer func() {
-				sscancel()
+				cancel()
 				app.wg.Done()
 			}()
-			err := srv.Shutdown(sctx)
+			err := srv.Shutdown(ctx)
 			if err != nil {
 				log.Warnw("サーバーの終了に失敗しました。", "error", err)
 			} else {
 				log.Infow("サーバーの終了に成功しました。", "Addr", srv.Addr)
 			}
-		}(sctx, srv.s)
+		}(ctx, srv.s)
 	}
 	// サーバーの終了待機
 	app.wg.Wait()
 	return log.Sync()
 }
 
-func (app *App) startExitManageProc(ctx context.Context) (context.Context, chan<- struct{}) {
-	exitch := make(chan struct{}, 1)
-	ectx, cancel := context.WithCancel(ctx)
-	app.wg.Add(1)
-	go func(ctx context.Context, ch <-chan struct{}) {
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig,
-			syscall.SIGHUP,
-			syscall.SIGINT,
-			syscall.SIGTERM,
-			syscall.SIGQUIT,
-			os.Interrupt,
-			os.Kill,
-		)
-		defer func() {
-			signal.Stop(sig)
-			cancel()
-			app.wg.Done()
-		}()
-
-		select {
-		case <-ctx.Done():
-			log.Infow("Cancel from parent")
-		case s := <-sig:
-			log.Infow("Signal!!", "signal", s)
-		case <-ch:
-			log.Infow("Exit command!!")
-		}
-	}(ectx, exitch)
-	return ectx, exitch
-}
-
 // サーバお手軽監視用
-func (app *App) webServerMonitoringProc(ctx context.Context, rich <-chan ResponseInfo, monich chan<- ResultMonitor) {
+func (app *application) webServerMonitoringProc(ctx context.Context, rich <-chan responseInfo, monich chan<- resultMonitor) {
 	defer app.wg.Done()
 	// logrotateの設定がめんどくせーのでアプリでやる
 	// https://github.com/uber-go/zap/blob/master/FAQ.md
@@ -277,8 +244,8 @@ func (app *App) webServerMonitoringProc(ctx context.Context, rich <-chan Respons
 		zap.InfoLevel,
 	))
 	defer logger.Sync()
-	res := ResultMonitor{}
-	resmin := ResultMonitor{}
+	res := resultMonitor{}
+	resmin := resultMonitor{}
 	tc := time.NewTicker(time.Minute)
 	defer tc.Stop()
 	for {
@@ -310,12 +277,12 @@ func (app *App) webServerMonitoringProc(ctx context.Context, rich <-chan Respons
 			)
 		case <-tc.C:
 			resmin = res
-			res = ResultMonitor{}
+			res = resultMonitor{}
 		}
 	}
 }
 
-func (app *App) updateDataProc(ctx context.Context, jsondata []Alias) {
+func (app *application) updateDataProc(ctx context.Context, jsondata []alias) {
 	defer app.wg.Done()
 	tc := time.NewTicker(UpdateCycleDuration)
 	defer tc.Stop()
@@ -331,7 +298,7 @@ func (app *App) updateDataProc(ctx context.Context, jsondata []Alias) {
 	}
 }
 
-func setJSONDataPath(jsondata []Alias) {
+func setJSONDataPath(jsondata []alias) {
 	list, err := filepath.Glob(filepath.Join(ConvertDataPath, "*.json"))
 	if err != nil {
 		return
@@ -342,16 +309,16 @@ func setJSONDataPath(jsondata []Alias) {
 		if l <= i {
 			return
 		}
-		jsondata[i].SetPath(list[l-(i+1)])
+		jsondata[i].setPath(list[l-(i+1)])
 	}
 }
 
 func updateData(ctx context.Context, update bool) {
-	tctx, cancel := context.WithTimeout(ctx, GitTimeoutDuration)
+	ctx, cancel := context.WithTimeout(ctx, GitTimeoutDuration)
 	defer cancel()
-	err := updateGitData(tctx)
+	err := updateGitData(ctx)
 	if !update {
-		if err == NoErrUpdate {
+		if err == errNoUpdate {
 			log.Infow("データ更新無し")
 			return
 		}
