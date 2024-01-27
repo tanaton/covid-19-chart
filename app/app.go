@@ -155,7 +155,7 @@ func (app *application) Run(ctx context.Context) error {
 	http.Handle("/data/daily_reports/today.json", &jsondata[0])
 	http.Handle("/data/daily_reports/-1day.json", &jsondata[1])
 	http.Handle("/data/daily_reports/-2day.json", &jsondata[2])
-	http.Handle("/", http.FileServer(http.Dir(PublicPath)))
+	http.Handle("/", http.FileServer(http.FS(os.DirFS(PublicPath))))
 
 	ghfunc, err := gziphandler.GzipHandlerWithOpts(gziphandler.CompressionLevel(gzip.BestSpeed), gziphandler.ContentTypes(gzipContentTypeList))
 	if err != nil {
@@ -168,7 +168,7 @@ func (app *application) Run(ctx context.Context) error {
 	// サーバ情報
 	sl := []serverItem{
 		{
-			s: &http.Server{Addr: ":8080", Handler: h},
+			s: &http.Server{Addr: "localhost:8080", Handler: h},
 			f: func(s *http.Server) error { return s.ListenAndServe() },
 		},
 		{

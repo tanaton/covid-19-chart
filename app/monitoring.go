@@ -21,7 +21,6 @@ type responseInfo struct {
 	addr      string
 }
 type resultMonitor struct {
-	err                 error
 	ResponseTimeSum     time.Duration
 	ResponseCount       uint
 	ResponseCodeOkCount uint
@@ -32,21 +31,13 @@ type MonitoringResponseWriter struct {
 	ri   responseInfo
 	rich chan<- responseInfo
 }
-type MonitoringResponseWriterWithCloseNotify struct {
-	*MonitoringResponseWriter
-}
 
 // MonitoringHandler モニタリング用ハンドラ生成
 func MonitoringHandler(h http.Handler, rich chan<- responseInfo) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mrw := newMonitoringResponseWriter(w, r, rich)
 		defer mrw.Close()
-		if _, ok := w.(http.CloseNotifier); ok {
-			mrwcn := MonitoringResponseWriterWithCloseNotify{mrw}
-			h.ServeHTTP(mrwcn, r)
-		} else {
-			h.ServeHTTP(mrw, r)
-		}
+		h.ServeHTTP(mrw, r)
 	})
 }
 
@@ -91,15 +82,9 @@ func (mrw *MonitoringResponseWriter) Close() error {
 
 // インターフェイスのチェック
 var _ http.ResponseWriter = &MonitoringResponseWriter{}
-var _ http.CloseNotifier = &MonitoringResponseWriterWithCloseNotify{}
 var _ http.Hijacker = &MonitoringResponseWriter{}
 var _ http.Flusher = &MonitoringResponseWriter{}
 var _ http.Pusher = &MonitoringResponseWriter{}
-
-// CloseNotify http.CloseNotifier interface
-func (mrw *MonitoringResponseWriterWithCloseNotify) CloseNotify() <-chan bool {
-	return mrw.ResponseWriter.(http.CloseNotifier).CloseNotify()
-}
 
 // Hijack implements http.Hijacker. If the underlying ResponseWriter is a
 // Hijacker, its Hijack method is returned. Otherwise an error is returned.
