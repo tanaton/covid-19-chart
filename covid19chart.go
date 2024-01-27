@@ -12,7 +12,7 @@ import (
 func main() {
 	defer func() {
 		if err := recover(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error:\n%s", err)
+			fmt.Fprintf(os.Stderr, "Error:%s\n", err)
 			os.Exit(1)
 		}
 	}()

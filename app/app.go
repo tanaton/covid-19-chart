@@ -7,7 +7,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io/fs"
 	"mime"
 	"net/http"
 	"os"
@@ -135,26 +135,26 @@ func (app *application) Run(ctx context.Context) error {
 	}
 	monich := make(chan resultMonitor)
 	rich := make(chan responseInfo, 32)
-	jsondata := [3]*aliasHandler{}
+	jsondata := [3]aliasHandler{}
 	jsondata[0].setPath(filepath.Join(ConvertDataPath, NowJSONDefaultName))
 	jsondata[1].setPath(filepath.Join(ConvertDataPath, NowJSONDefaultName))
 	jsondata[2].setPath(filepath.Join(ConvertDataPath, NowJSONDefaultName))
 
 	// データ更新
 	updateData(ctx, true)
-	setJSONDataPath([]alias{jsondata[0], jsondata[1], jsondata[2]})
+	setJSONDataPath([]alias{&jsondata[0], &jsondata[1], &jsondata[2]})
 
 	// サーバ起動
 	app.wg.Add(1)
 	go app.webServerMonitoringProc(ctx, rich, monich)
 	app.wg.Add(1)
-	go app.updateDataProc(ctx, []alias{jsondata[0], jsondata[1], jsondata[2]})
+	go app.updateDataProc(ctx, []alias{&jsondata[0], &jsondata[1], &jsondata[2]})
 
 	// URL設定
 	http.Handle("/api/unko.in/1/monitor", &GetMonitoringHandler{ch: monich})
-	http.Handle("/data/daily_reports/today.json", jsondata[0])
-	http.Handle("/data/daily_reports/-1day.json", jsondata[1])
-	http.Handle("/data/daily_reports/-2day.json", jsondata[2])
+	http.Handle("/data/daily_reports/today.json", &jsondata[0])
+	http.Handle("/data/daily_reports/-1day.json", &jsondata[1])
+	http.Handle("/data/daily_reports/-2day.json", &jsondata[2])
 	http.Handle("/", http.FileServer(http.Dir(PublicPath)))
 
 	ghfunc, err := gziphandler.GzipHandlerWithOpts(gziphandler.CompressionLevel(gzip.BestSpeed), gziphandler.ContentTypes(gzipContentTypeList))
@@ -364,16 +364,14 @@ type fileitem struct {
 }
 
 func getFileItemList() ([]fileitem, error) {
-	dl, err := ioutil.ReadDir(RepoDataPath)
+	filesystem := os.DirFS(RepoDataPath)
+	dl, err := fs.Glob(filesystem, "*.csv")
 	if err != nil {
 		return nil, err
 	}
 	fl := make([]fileitem, 0, len(dl))
 	for _, it := range dl {
-		if it.IsDir() {
-			continue
-		}
-		name := it.Name()
+		_, name := filepath.Split(it)
 		ext := filepath.Ext(name)
 		if ext != ".csv" {
 			continue
@@ -656,7 +654,7 @@ func checkAndCreateDir(p string) error {
 	if err != nil {
 		return os.MkdirAll(p, 0666)
 	}
-	if st.IsDir() == false {
+	if !st.IsDir() {
 		return fmt.Errorf("フォルダを期待したけどファイルでした。:%s", p)
 	}
 	return nil
