@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/go-git/go-git"
+	"github.com/go-git/go-git/v5"
 )
 
 func updateGitData(ctx context.Context) error {
