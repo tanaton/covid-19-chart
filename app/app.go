@@ -128,7 +128,7 @@ func New() *application {
 
 func (app *application) Run(ctx context.Context) error {
 	// 終了管理機能の起動
-	ctx, stop := signal.NotifyContext(ctx)
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 	if err := checkAndCreateDir(PublicPath); err != nil {
 		return err
@@ -201,8 +201,10 @@ func (srv serverItem) startServer(wg *sync.WaitGroup) {
 }
 
 func (app *application) shutdown(ctx context.Context, sl ...serverItem) error {
+	log.Infow("シグナル等の待ち受けを開始しました。")
 	// シグナル等でサーバを中断する
 	<-ctx.Done()
+	log.Infow("シャットダウン処理を開始しました。", "message", ctx.Err())
 	// シャットダウン処理用コンテキストの用意
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
