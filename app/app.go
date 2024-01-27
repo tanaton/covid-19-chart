@@ -168,7 +168,7 @@ func (app *application) Run(ctx context.Context) error {
 	// サーバ情報
 	sl := []serverItem{
 		{
-			s: &http.Server{Addr: "localhost:8080", Handler: h},
+			s: &http.Server{Addr: ":8080", Handler: h},
 			f: func(s *http.Server) error { return s.ListenAndServe() },
 		},
 		{
