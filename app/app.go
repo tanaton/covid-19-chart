@@ -133,6 +133,9 @@ func (app *application) Run(ctx context.Context) error {
 	if err := checkAndCreateDir(PublicPath); err != nil {
 		return err
 	}
+	if err := checkAndCreateDir(AccessLogPath); err != nil {
+		return err
+	}
 	monich := make(chan resultMonitor)
 	rich := make(chan responseInfo, 32)
 	jsondata := [3]aliasHandler{}
@@ -147,8 +150,9 @@ func (app *application) Run(ctx context.Context) error {
 	// サーバ起動
 	app.wg.Add(1)
 	go app.webServerMonitoringProc(ctx, rich, monich)
-	app.wg.Add(1)
-	go app.updateDataProc(ctx, []alias{&jsondata[0], &jsondata[1], &jsondata[2]})
+	// 元データの更新が止まったので、定期取得も止める
+	//app.wg.Add(1)
+	//go app.updateDataProc(ctx, []alias{&jsondata[0], &jsondata[1], &jsondata[2]})
 
 	// URL設定
 	http.Handle("/api/unko.in/1/monitor", &GetMonitoringHandler{ch: monich})

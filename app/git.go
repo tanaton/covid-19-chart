@@ -42,7 +42,8 @@ func cloneGit(ctx context.Context, p, url string) error {
 		return err
 	}
 	r, err := git.PlainCloneContext(ctx, p, false, &git.CloneOptions{
-		URL: url,
+		URL:   url,
+		Depth: 1,
 	})
 	if err != nil {
 		return err
